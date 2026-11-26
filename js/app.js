@@ -12,6 +12,8 @@ import {
   renderBitwiseView,
   renderBlitzView
 } from './tools.js';
+import { renderDebugHuntView, renderAlgoSelectorView } from './advancedTools.js';
+import { runPythonTests, getTestsForTopic } from './pyodideRunner.js';
 
 const STORAGE_KEY = 'algoportal_state_v1';
 
@@ -188,6 +190,8 @@ function parseRoute() {
   if (hash === '#stl') return { view: 'stl' };
   if (hash === '#bitwise') return { view: 'bitwise' };
   if (hash === '#blitz') return { view: 'blitz' };
+  if (hash === '#debughunt') return { view: 'debughunt' };
+  if (hash === '#selector') return { view: 'selector' };
   if (hash.startsWith('#topic=')) {
     const id = hash.slice('#topic='.length).trim();
     const topic = TOPICS.find((t) => t.id === id);
@@ -224,6 +228,10 @@ function renderCurrentRoute() {
     renderBitwiseView(main);
   } else if (route.view === 'blitz') {
     renderBlitzView(main, escapeHtml);
+  } else if (route.view === 'debughunt') {
+    renderDebugHuntView(main, escapeHtml);
+  } else if (route.view === 'selector') {
+    renderAlgoSelectorView(main, escapeHtml);
   } else {
     renderTopicView(main, route.topic);
   }
@@ -377,79 +385,6 @@ function renderTopicView(container, topic) {
       state.cheatsheet.delete(topic.id);
       cheatBtn.textContent = '+ Добавить в шпаргалку для печати';
       showToast('Удалено из шпаргалки');
-    } else if (tabName === 'fill') {
-      const tasks = topic.fillBlanks || [];
-      if (tasks.length === 0) {
-        tabContentArea.innerHTML = `<p style="color:var(--text-secondary);">Задачи для этой темы скоро появятся.</p>`;
-        return;
-      }
-
-      const normalizeCode = (s) =>
-        String(s)
-          .trim()
-          .replace(/;+$/, '')
-          .replace(/\s+/g, '')
-          .replace(/\(\s*/g, '(')
-          .replace(/\s*\)/g, ')');
-
-      tabContentArea.innerHTML = tasks
-        .map(
-          (task, tIdx) => `
-          <div class="fill-task-card" data-fill-task="${tIdx}">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-              <strong>${escapeHtml(task.title)}</strong>
-              <span class="badge badge-accent">${task.lang === 'cpp' ? 'C++' : 'Python'}</span>
-            </div>
-            <div class="fill-code-box">
-              ${task.lines
-                .map((ln) => {
-                  if (typeof ln === 'string') {
-                    return `<div class="fill-line">${highlightCode(ln, task.lang)}</div>`;
-                  }
-                  return `<div class="fill-blank-row"><span>${escapeHtml(ln.indent || '')}</span><input type="text" class="fill-input" data-blank-id="${ln.blankId}" placeholder="${escapeHtml(ln.placeholder)}" autocomplete="off" spellcheck="false"></div>`;
-                })
-                .join('')}
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-              <button type="button" class="btn btn-primary btn-sm" data-check-fill="${tIdx}">Проверить</button>
-              <button type="button" class="btn btn-secondary btn-sm" data-hint-fill="${tIdx}">Показать подсказку / ответ</button>
-              <span class="fill-result-msg" style="font-size:13px;"></span>
-            </div>
-          </div>
-        `
-        )
-        .join('');
-
-      tasks.forEach((task, tIdx) => {
-        const card = tabContentArea.querySelector(`[data-fill-task="${tIdx}"]`);
-        const msgEl = card.querySelector('.fill-result-msg');
-        const blanks = task.lines.filter((ln) => typeof ln === 'object');
-
-        card.querySelector(`[data-check-fill="${tIdx}"]`).addEventListener('click', () => {
-          let allOk = true;
-          blanks.forEach((b) => {
-            const input = card.querySelector(`[data-blank-id="${b.blankId}"]`);
-            const normUser = normalizeCode(input.value);
-            const ok = normUser.length > 0 && b.answers.some((ans) => normalizeCode(ans) === normUser);
-            input.classList.remove('correct', 'wrong');
-            input.classList.add(ok ? 'correct' : 'wrong');
-            if (!ok) allOk = false;
-          });
-          msgEl.style.color = allOk ? 'var(--success)' : 'var(--danger)';
-          msgEl.textContent = allOk ? '✓ Все строки верны!' : '✕ Есть ошибки в подсвеченных строках.';
-        });
-
-        card.querySelector(`[data-hint-fill="${tIdx}"]`).addEventListener('click', () => {
-          blanks.forEach((b) => {
-            const input = card.querySelector(`[data-blank-id="${b.blankId}"]`);
-            input.value = b.hint;
-            input.classList.remove('wrong');
-            input.classList.add('correct');
-          });
-          msgEl.style.color = 'var(--accent-light)';
-          msgEl.textContent = 'Показан эталонный вариант.';
-        });
-      });
     } else {
       state.cheatsheet.add(topic.id);
       cheatBtn.textContent = '✓ В шпаргалке (убрать)';
@@ -576,6 +511,7 @@ function renderInteractiveWorkspace(container, topic) {
           <button type="button" class="tab-btn active" data-tab="cpp">C++</button>
           <button type="button" class="tab-btn" data-tab="python">Python</button>
           <button type="button" class="tab-btn" data-tab="fill">Практика: Допиши код</button>
+          <button type="button" class="tab-btn" data-tab="pysandbox">🐍 Песочница Python</button>
           <button type="button" class="tab-btn" data-tab="practice">Задачи и тест</button>
         </div>
       </div>
@@ -674,80 +610,7 @@ function renderInteractiveWorkspace(container, topic) {
                 }
                 edgeStartNode = null;
                 runVisualization();
-              } else if (tabName === 'fill') {
-      const tasks = topic.fillBlanks || [];
-      if (tasks.length === 0) {
-        tabContentArea.innerHTML = `<p style="color:var(--text-secondary);">Задачи для этой темы скоро появятся.</p>`;
-        return;
-      }
-
-      const normalizeCode = (s) =>
-        String(s)
-          .trim()
-          .replace(/;+$/, '')
-          .replace(/\s+/g, '')
-          .replace(/\(\s*/g, '(')
-          .replace(/\s*\)/g, ')');
-
-      tabContentArea.innerHTML = tasks
-        .map(
-          (task, tIdx) => `
-          <div class="fill-task-card" data-fill-task="${tIdx}">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-              <strong>${escapeHtml(task.title)}</strong>
-              <span class="badge badge-accent">${task.lang === 'cpp' ? 'C++' : 'Python'}</span>
-            </div>
-            <div class="fill-code-box">
-              ${task.lines
-                .map((ln) => {
-                  if (typeof ln === 'string') {
-                    return `<div class="fill-line">${highlightCode(ln, task.lang)}</div>`;
-                  }
-                  return `<div class="fill-blank-row"><span>${escapeHtml(ln.indent || '')}</span><input type="text" class="fill-input" data-blank-id="${ln.blankId}" placeholder="${escapeHtml(ln.placeholder)}" autocomplete="off" spellcheck="false"></div>`;
-                })
-                .join('')}
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-              <button type="button" class="btn btn-primary btn-sm" data-check-fill="${tIdx}">Проверить</button>
-              <button type="button" class="btn btn-secondary btn-sm" data-hint-fill="${tIdx}">Показать подсказку / ответ</button>
-              <span class="fill-result-msg" style="font-size:13px;"></span>
-            </div>
-          </div>
-        `
-        )
-        .join('');
-
-      tasks.forEach((task, tIdx) => {
-        const card = tabContentArea.querySelector(`[data-fill-task="${tIdx}"]`);
-        const msgEl = card.querySelector('.fill-result-msg');
-        const blanks = task.lines.filter((ln) => typeof ln === 'object');
-
-        card.querySelector(`[data-check-fill="${tIdx}"]`).addEventListener('click', () => {
-          let allOk = true;
-          blanks.forEach((b) => {
-            const input = card.querySelector(`[data-blank-id="${b.blankId}"]`);
-            const normUser = normalizeCode(input.value);
-            const ok = normUser.length > 0 && b.answers.some((ans) => normalizeCode(ans) === normUser);
-            input.classList.remove('correct', 'wrong');
-            input.classList.add(ok ? 'correct' : 'wrong');
-            if (!ok) allOk = false;
-          });
-          msgEl.style.color = allOk ? 'var(--success)' : 'var(--danger)';
-          msgEl.textContent = allOk ? '✓ Все строки верны!' : '✕ Есть ошибки в подсвеченных строках.';
-        });
-
-        card.querySelector(`[data-hint-fill="${tIdx}"]`).addEventListener('click', () => {
-          blanks.forEach((b) => {
-            const input = card.querySelector(`[data-blank-id="${b.blankId}"]`);
-            input.value = b.hint;
-            input.classList.remove('wrong');
-            input.classList.add('correct');
-          });
-          msgEl.style.color = 'var(--accent-light)';
-          msgEl.textContent = 'Показан эталонный вариант.';
-        });
-      });
-    } else {
+              } else {
                 edgeStartNode = null;
                 player.onRenderFrame(player.frames[player.index], player.index, player.frames.length);
               }
@@ -1470,6 +1333,63 @@ function renderInteractiveWorkspace(container, topic) {
           msgEl.textContent = 'Показан эталонный вариант.';
         });
       });
+    } else if (tabName === 'pysandbox') {
+      const { starter, tests } = getTestsForTopic(topic.id);
+      tabContentArea.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+          <div>
+            <strong>Запуск Python-решения в браузере (Pyodide)</strong>
+            <div style="font-size:12px; color:var(--text-secondary);">Pyodide загружается лениво только при первом запуске тестов.</div>
+          </div>
+          <button type="button" id="py-run-btn" class="btn btn-primary btn-sm">▶ Запустить на тестах (${tests.length})</button>
+        </div>
+        <textarea id="py-code-editor" class="py-editor" spellcheck="false">${escapeHtml(starter)}</textarea>
+        <div id="py-status" style="margin-top:8px; font-size:13px; color:var(--accent-light);" hidden></div>
+        <div id="py-results" class="py-test-list"></div>
+      `;
+
+      const runBtn = document.getElementById('py-run-btn');
+      const statusEl = document.getElementById('py-status');
+      const resultsEl = document.getElementById('py-results');
+      const editorEl = document.getElementById('py-code-editor');
+
+      runBtn.addEventListener('click', async () => {
+        runBtn.disabled = true;
+        statusEl.hidden = false;
+        statusEl.textContent = '⏳ Инициализация Pyodide и выполнение тестов...';
+        resultsEl.innerHTML = '';
+
+        try {
+          const results = await runPythonTests(editorEl.value, tests);
+          const passed = results.filter((r) => r.verdict === 'OK').length;
+          statusEl.textContent = `Готово: пройдено ${passed} из ${results.length} тестов.`;
+          resultsEl.innerHTML = results
+            .map(
+              (r) => `
+              <div class="py-test-row ${r.verdict === 'OK' ? 'ok' : 'fail'}">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <strong>Тест #${r.index}: <span class="${r.verdict === 'OK' ? 'status-ok' : 'status-tle'}">${r.verdict}</span></strong>
+                  <span class="mono" style="font-size:12px; color:var(--text-secondary);">${r.ms} мс</span>
+                </div>
+                ${
+                  r.verdict !== 'OK'
+                    ? `<div class="mono" style="font-size:12px; margin-top:6px; color:var(--text-secondary);">
+                        Ввод: ${escapeHtml(r.input.trim().replace(/\n/g, ' | '))}<br>
+                        Ожидалось: ${escapeHtml(r.expected)}<br>
+                        Получено: ${escapeHtml(r.actual)}
+                       </div>`
+                    : ''
+                }
+              </div>
+            `
+            )
+            .join('');
+        } catch (err) {
+          statusEl.textContent = `Ошибка загрузки Pyodide: ${err.message}`;
+        } finally {
+          runBtn.disabled = false;
+        }
+      });
     } else {
       const q = topic.quiz;
       tabContentArea.innerHTML = `
@@ -1516,80 +1436,7 @@ function renderInteractiveWorkspace(container, topic) {
             btn.classList.add('correct');
             fb.style.color = 'var(--success)';
             fb.textContent = `✓ Верно! ${q.explanation}`;
-          } else if (tabName === 'fill') {
-      const tasks = topic.fillBlanks || [];
-      if (tasks.length === 0) {
-        tabContentArea.innerHTML = `<p style="color:var(--text-secondary);">Задачи для этой темы скоро появятся.</p>`;
-        return;
-      }
-
-      const normalizeCode = (s) =>
-        String(s)
-          .trim()
-          .replace(/;+$/, '')
-          .replace(/\s+/g, '')
-          .replace(/\(\s*/g, '(')
-          .replace(/\s*\)/g, ')');
-
-      tabContentArea.innerHTML = tasks
-        .map(
-          (task, tIdx) => `
-          <div class="fill-task-card" data-fill-task="${tIdx}">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-              <strong>${escapeHtml(task.title)}</strong>
-              <span class="badge badge-accent">${task.lang === 'cpp' ? 'C++' : 'Python'}</span>
-            </div>
-            <div class="fill-code-box">
-              ${task.lines
-                .map((ln) => {
-                  if (typeof ln === 'string') {
-                    return `<div class="fill-line">${highlightCode(ln, task.lang)}</div>`;
-                  }
-                  return `<div class="fill-blank-row"><span>${escapeHtml(ln.indent || '')}</span><input type="text" class="fill-input" data-blank-id="${ln.blankId}" placeholder="${escapeHtml(ln.placeholder)}" autocomplete="off" spellcheck="false"></div>`;
-                })
-                .join('')}
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-              <button type="button" class="btn btn-primary btn-sm" data-check-fill="${tIdx}">Проверить</button>
-              <button type="button" class="btn btn-secondary btn-sm" data-hint-fill="${tIdx}">Показать подсказку / ответ</button>
-              <span class="fill-result-msg" style="font-size:13px;"></span>
-            </div>
-          </div>
-        `
-        )
-        .join('');
-
-      tasks.forEach((task, tIdx) => {
-        const card = tabContentArea.querySelector(`[data-fill-task="${tIdx}"]`);
-        const msgEl = card.querySelector('.fill-result-msg');
-        const blanks = task.lines.filter((ln) => typeof ln === 'object');
-
-        card.querySelector(`[data-check-fill="${tIdx}"]`).addEventListener('click', () => {
-          let allOk = true;
-          blanks.forEach((b) => {
-            const input = card.querySelector(`[data-blank-id="${b.blankId}"]`);
-            const normUser = normalizeCode(input.value);
-            const ok = normUser.length > 0 && b.answers.some((ans) => normalizeCode(ans) === normUser);
-            input.classList.remove('correct', 'wrong');
-            input.classList.add(ok ? 'correct' : 'wrong');
-            if (!ok) allOk = false;
-          });
-          msgEl.style.color = allOk ? 'var(--success)' : 'var(--danger)';
-          msgEl.textContent = allOk ? '✓ Все строки верны!' : '✕ Есть ошибки в подсвеченных строках.';
-        });
-
-        card.querySelector(`[data-hint-fill="${tIdx}"]`).addEventListener('click', () => {
-          blanks.forEach((b) => {
-            const input = card.querySelector(`[data-blank-id="${b.blankId}"]`);
-            input.value = b.hint;
-            input.classList.remove('wrong');
-            input.classList.add('correct');
-          });
-          msgEl.style.color = 'var(--accent-light)';
-          msgEl.textContent = 'Показан эталонный вариант.';
-        });
-      });
-    } else {
+          } else {
             btn.classList.add('wrong');
             fb.style.color = 'var(--danger)';
             fb.textContent = `✕ Неверно. Попробуйте другой вариант.`;

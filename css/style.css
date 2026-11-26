@@ -1988,6 +1988,59 @@ code, pre, .mono {
 }
 
 /* ==========================================================================
+   Pyodide Sandbox & Debug Hunt
+   ========================================================================== */
+.py-editor {
+  width: 100%;
+  min-height: 170px;
+  resize: vertical;
+  background: var(--bg-code);
+  color: #E2E8F0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  outline: none;
+}
+
+.py-editor:focus {
+  border-color: var(--accent);
+}
+
+.py-test-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.py-test-row {
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.py-test-row.ok {
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.py-test-row.fail {
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
+.debug-line {
+  cursor: pointer;
+}
+
+.debug-line:hover {
+  background: rgba(168, 85, 247, 0.14);
+}
+
+/* ==========================================================================
    Print Cheatsheet Styles (ICPC Two-Column Timbook)
    ========================================================================== */
 .print-only-area {
