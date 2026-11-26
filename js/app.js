@@ -1,4 +1,9 @@
-import { TOPICS } from '../data/topics.js';
+import {
+  TOPICS_INDEX as TOPICS,
+  loadTopicById,
+  loadTopicsByIds,
+  preloadAllTopics
+} from '../data/topicsIndex.js';
 import { StepPlayer } from './player.js';
 import { renderArrayFrame } from './engines/arrayEngine.js';
 import { renderGraphFrame } from './engines/graphEngine.js';
@@ -206,7 +211,7 @@ function parseRoute() {
   return { view: 'roadmap' };
 }
 
-function renderCurrentRoute() {
+async function renderCurrentRoute() {
   if (state.activePlayer) {
     state.activePlayer.destroy();
     state.activePlayer = null;
@@ -239,7 +244,14 @@ function renderCurrentRoute() {
   } else if (route.view === 'selector') {
     renderAlgoSelectorView(main, escapeHtml);
   } else {
-    renderTopicView(main, route.topic);
+    main.innerHTML = `<section class="card"><div style="color:var(--text-secondary);">⏳ Загрузка модуля темы...</div></section>`;
+    try {
+      const fullTopic = await loadTopicById(route.topic.id);
+      if (fullTopic) renderTopicView(main, fullTopic);
+      else renderRoadmapView(main);
+    } catch {
+      main.innerHTML = `<section class="card"><div style="color:var(--danger);">Не удалось загрузить тему (проверьте сеть или офлайн-кэш).</div></section>`;
+    }
   }
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
@@ -1856,13 +1868,17 @@ function renderTimbookView(container) {
     checkboxes().forEach((cb) => (cb.checked = false));
   });
 
-  document.getElementById('tb-print-btn').addEventListener('click', () => {
-    const selectedIds = new Set(checkboxes().filter((cb) => cb.checked).map((cb) => cb.value));
-    const selected = TOPICS.filter((t) => selectedIds.has(t.id));
-    if (selected.length === 0) {
+  document.getElementById('tb-print-btn').addEventListener('click', async () => {
+    const selectedIds = checkboxes().filter((cb) => cb.checked).map((cb) => cb.value);
+    if (selectedIds.length === 0) {
       showToast('Выберите хотя бы одну тему для Тимбука');
       return;
     }
+
+    const btn = document.getElementById('tb-print-btn');
+    btn.disabled = true;
+    const selected = await loadTopicsByIds(selectedIds);
+    btn.disabled = false;
 
     const lang = document.getElementById('tb-lang').value;
     const printArea = document.getElementById('print-cheatsheet-area');
@@ -2095,11 +2111,55 @@ function setupCfProfileSync() {
   renderBadge();
 }
 
+function setupPwaAndOffline() {
+  const pill = document.getElementById('net-status-pill');
+  const cacheBtn = document.getElementById('cache-all-btn');
+
+  const updateNetStatus = () => {
+    if (!pill) return;
+    if (navigator.onLine) {
+      pill.className = 'badge badge-success';
+      pill.textContent = '● Online';
+    } else {
+      pill.className = 'badge badge-warning';
+      pill.textContent = '● Offline (кэш)';
+    }
+  };
+
+  window.addEventListener('online', updateNetStatus);
+  window.addEventListener('offline', updateNetStatus);
+  updateNetStatus();
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      // Игнорируем ошибку регистрации SW (например, при открытии через file://)
+    });
+  }
+
+  if (cacheBtn) {
+    cacheBtn.addEventListener('click', async () => {
+      cacheBtn.disabled = true;
+      cacheBtn.textContent = '⏳ Кэширование...';
+      try {
+        const count = await preloadAllTopics();
+        showToast(`Все ${count} тем загружены в офлайн-кэш!`);
+        cacheBtn.textContent = '✓ В кэше';
+      } catch {
+        showToast('Не удалось предзагрузить темы');
+        cacheBtn.textContent = '📥 Кэш офлайн';
+      } finally {
+        cacheBtn.disabled = false;
+      }
+    });
+  }
+}
+
 loadState();
 updateProgressUI();
 setupGlobalActions();
 setupContestTimer();
 setupProjectorMode();
 setupCfProfileSync();
+setupPwaAndOffline();
 window.addEventListener('hashchange', renderCurrentRoute);
 renderCurrentRoute();

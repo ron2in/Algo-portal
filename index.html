@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AlgoPortal — Интерактивный портал по алгоритмам и структурам данных</title>
   <meta name="description" content="Изучение алгоритмов и структур данных на базе материалов e-maxx.ru / cp-algorithms с пошаговой визуализацией и синхронизацией с кодом.">
+  <meta name="theme-color" content="#A855F7">
+  <link rel="manifest" href="./manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -87,6 +89,10 @@
             📂 Загрузить бэкап
             <input type="file" id="import-progress-input" accept=".json,application/json" hidden>
           </label>
+        </div>
+        <div class="io-actions" style="align-items:center; margin-top:2px;">
+          <span id="net-status-pill" class="badge badge-success" style="font-size:10.5px;">● Online</span>
+          <button id="cache-all-btn" class="btn btn-ghost btn-xs" title="Предзагрузить все темы в офлайн-кэш">📥 Кэш офлайн</button>
         </div>
       </div>
     </aside>
