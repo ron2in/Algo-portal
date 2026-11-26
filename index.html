@@ -63,10 +63,14 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button id="open-cheatsheet-btn" class="btn btn-secondary btn-sm btn-full">
-          <span>🖨 Шпаргалка для печати</span>
-          <span id="cheatsheet-count" class="badge badge-muted">0</span>
-        </button>
+        <div class="sidebar-tools-grid">
+          <a href="#calculator" id="nav-calculator-link" class="btn btn-secondary btn-xs">⏱ N → O</a>
+          <a href="#generator" class="btn btn-secondary btn-xs">🧪 Тесты</a>
+          <a href="#stl" class="btn btn-secondary btn-xs">📚 STL / Py</a>
+          <a href="#bitwise" class="btn btn-secondary btn-xs">🔢 Биты</a>
+          <a href="#blitz" class="btn btn-secondary btn-xs">⚡ Блиц</a>
+          <a href="#timbook" id="open-cheatsheet-btn" class="btn btn-secondary btn-xs">📘 Тимбук <span id="cheatsheet-count" class="badge badge-muted">0</span></a>
+        </div>
         <div class="io-actions">
           <button id="export-progress-btn" class="btn btn-ghost btn-xs" title="Экспорт прогресса в JSON">Экспорт JSON</button>
           <label class="btn btn-ghost btn-xs import-label" title="Импорт прогресса из JSON">
@@ -77,10 +81,31 @@
       </div>
     </aside>
 
-    <!-- Main Workspace -->
-    <main id="main-content" class="main-content">
-      <!-- Dynamic view rendered by js/app.js -->
-    </main>
+    <!-- Workspace Column -->
+    <div class="workspace-column">
+      <div class="contest-timer-bar" id="contest-timer-bar">
+        <div class="timer-left">
+          <span class="badge badge-accent">Таймер контеста</span>
+          <select id="timer-mode-select" class="select-field timer-select" aria-label="Режим таймера">
+            <option value="stopwatch">Секундомер</option>
+            <option value="pomo25">Pomodoro 25 мин</option>
+            <option value="pomo5">Перерыв 5 мин</option>
+            <option value="custom">Контест (мин)</option>
+          </select>
+          <input id="timer-custom-mins" type="number" class="input-field input-mono timer-mins-input" value="120" min="1" max="600" hidden aria-label="Минуты">
+        </div>
+        <div class="timer-right">
+          <span id="timer-display" class="mono timer-display">00:00</span>
+          <button type="button" id="timer-start-btn" class="btn btn-primary btn-xs">▶ Старт</button>
+          <button type="button" id="timer-reset-btn" class="btn btn-ghost btn-xs">↺ Сброс</button>
+        </div>
+      </div>
+
+      <!-- Main Workspace -->
+      <main id="main-content" class="main-content">
+        <!-- Dynamic view rendered by js/app.js -->
+      </main>
+    </div>
   </div>
 
   <!-- Print-only Cheatsheet Container -->
