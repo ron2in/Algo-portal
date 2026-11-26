@@ -190,6 +190,12 @@ export class StepPlayer {
           <span class="mono" data-role="speed-val">1.0x</span>
         </div>
       </div>
+      <div class="player-hotkeys-hint">
+        <span><kbd>Space</kbd> Старт/Пауза</span>
+        <span><kbd>←</kbd> <kbd>→</kbd> Шаг</span>
+        <span><kbd>Home</kbd> <kbd>End</kbd> Край</span>
+        <span><kbd>+</kbd> <kbd>-</kbd> Скорость</span>
+      </div>
     `;
 
     this.btnStart = this.container.querySelector('[data-action="start"]');
@@ -213,9 +219,44 @@ export class StepPlayer {
     });
 
     this.speedInput.addEventListener('input', (e) => {
-      this.speedMultiplier = Number(e.target.value);
-      this.speedVal.textContent = `${this.speedMultiplier.toFixed(2).replace(/\.00$/, '.0')}x`;
+      this._setSpeed(Number(e.target.value));
     });
+
+    this._onKeyDown = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable) {
+        return;
+      }
+      if (e.code === 'Space') {
+        e.preventDefault();
+        this.togglePlay();
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        this.stepBack();
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        this.stepForward(false);
+      } else if (e.code === 'Home') {
+        e.preventDefault();
+        this.goTo(0);
+      } else if (e.code === 'End') {
+        e.preventDefault();
+        this.goTo(this.frames.length - 1);
+      } else if (e.key === '+' || e.key === '=') {
+        this._setSpeed(Math.min(3, this.speedMultiplier + 0.25));
+      } else if (e.key === '-' || e.key === '_') {
+        this._setSpeed(Math.max(0.5, this.speedMultiplier - 0.25));
+      }
+    };
+    window.addEventListener('keydown', this._onKeyDown);
+  }
+
+  _setSpeed(val) {
+    this.speedMultiplier = Math.max(0.5, Math.min(3, val));
+    if (this.speedInput) this.speedInput.value = String(this.speedMultiplier);
+    if (this.speedVal) {
+      this.speedVal.textContent = `${this.speedMultiplier.toFixed(2).replace(/\.00$/, '.0')}x`;
+    }
   }
 
   _syncUI() {
@@ -234,5 +275,9 @@ export class StepPlayer {
 
   destroy() {
     this.pause();
+    if (this._onKeyDown) {
+      window.removeEventListener('keydown', this._onKeyDown);
+      this._onKeyDown = null;
+    }
   }
 }

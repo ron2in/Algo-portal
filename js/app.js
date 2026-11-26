@@ -1216,6 +1216,111 @@ function renderInteractiveWorkspace(container, topic) {
         rebuildCustomForm();
         runVisualization();
       });
+
+      // Вставка графа в формате Codeforces (n m + m строк u v [w])
+      const cfGraphBox = document.createElement('details');
+      cfGraphBox.className = 'cf-import-box';
+      cfGraphBox.innerHTML = `
+        <summary>📋 Ввод графа как на Codeforces (n m + рёбра 1-индексации)</summary>
+        <textarea id="cf-graph-ta" class="cf-textarea" placeholder="4 4&#10;1 2 3&#10;2 3 5&#10;3 4 2&#10;4 1 7"></textarea>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button type="button" id="cf-graph-apply" class="btn btn-primary btn-xs">Загрузить граф</button>
+          <span id="cf-graph-err" style="font-size:12px; color:var(--danger);" hidden></span>
+        </div>
+      `;
+      customInputArea.appendChild(cfGraphBox);
+
+      document.getElementById('cf-graph-apply').addEventListener('click', () => {
+        const errEl = document.getElementById('cf-graph-err');
+        const lines = document.getElementById('cf-graph-ta').value
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (lines.length === 0) {
+          errEl.textContent = 'Вставьте строки в формате: n m, затем m рёбер.';
+          errEl.hidden = false;
+          return;
+        }
+        const [n, m] = lines[0].split(/\s+/).map(Number);
+        if (Number.isNaN(n) || n < 2 || n > 12 || Number.isNaN(m) || m < 0) {
+          errEl.textContent = 'Первая строка: n (2..12) и m (≥ 0).';
+          errEl.hidden = false;
+          return;
+        }
+        const parsedEdges = [];
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(/\s+/).map(Number);
+          if (parts.length < 2 || parts.some(Number.isNaN)) continue;
+          const u = parts[0] - 1;
+          const v = parts[1] - 1;
+          if (u < 0 || u >= n || v < 0 || v >= n) {
+            errEl.textContent = `Вершины должны быть от 1 до ${n} (строка ${i + 1}).`;
+            errEl.hidden = false;
+            return;
+          }
+          parsedEdges.push(parts[2] !== undefined ? { from: u, to: v, weight: parts[2] } : { from: u, to: v });
+        }
+        const nodes = Array.from({ length: n }, (_, i) => {
+          const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+          return {
+            id: i,
+            x: Math.round(280 + 95 * Math.cos(angle)),
+            y: Math.round(130 + 90 * Math.sin(angle))
+          };
+        });
+        errEl.hidden = true;
+        currentData = {
+          nodes,
+          edges: parsedEdges,
+          ...(currentData.startNode !== undefined ? { startNode: 0 } : {})
+        };
+        rebuildCustomForm();
+        runVisualization();
+        showToast(`Граф загружен (${n} вершин, ${parsedEdges.length} рёбер)`);
+      });
+    }
+
+    // Универсальный парсер массива как на Codeforces (n на 1-й строке, элементы на 2-й)
+    if (topic.engine === 'array') {
+      const cfArrBox = document.createElement('details');
+      cfArrBox.className = 'cf-import-box';
+      cfArrBox.innerHTML = `
+        <summary>📋 Ввод массива как на Codeforces (n и элементы)</summary>
+        <textarea id="cf-arr-ta" class="cf-textarea" placeholder="6&#10;2 5 8 12 16 23"></textarea>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button type="button" id="cf-arr-apply" class="btn btn-primary btn-xs">Подставить массив</button>
+          <span id="cf-arr-err" style="font-size:12px; color:var(--danger);" hidden></span>
+        </div>
+      `;
+      customInputArea.appendChild(cfArrBox);
+
+      document.getElementById('cf-arr-apply').addEventListener('click', () => {
+        const errEl = document.getElementById('cf-arr-err');
+        const lines = document.getElementById('cf-arr-ta').value
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (lines.length < 2) {
+          errEl.textContent = 'Нужно минимум 2 строки: n на первой, элементы на второй.';
+          errEl.hidden = false;
+          return;
+        }
+        const header = lines[0].split(/\s+/).map(Number);
+        const nums = lines.slice(1).join(' ').split(/[\s,]+/).filter(Boolean).map(Number);
+        if (Number.isNaN(header[0]) || nums.length === 0 || nums.some(Number.isNaN)) {
+          errEl.textContent = 'Некорректные числа во вводе.';
+          errEl.hidden = false;
+          return;
+        }
+        errEl.hidden = true;
+        const arrField = document.getElementById('arr-input') || document.getElementById('fw-arr');
+        if (arrField) arrField.value = nums.join(', ');
+        if (header.length >= 2 && document.getElementById('target-input')) {
+          document.getElementById('target-input').value = header[1];
+        }
+        const form = customInputArea.querySelector('form');
+        if (form) form.requestSubmit();
+      });
     }
   }
 
@@ -1685,7 +1790,8 @@ function setupGlobalActions() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'algoportal-progress.json';
+    const today = new Date().toISOString().slice(0, 10);
+    a.download = `algoportal-backup-${today}.json`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('Прогресс и заметки экспортированы в JSON');
@@ -1791,6 +1897,32 @@ function setupContestTimer() {
   resetTimer();
 }
 
+function setupProjectorMode() {
+  const btn = document.getElementById('projector-mode-btn');
+  if (!btn) return;
+
+  const toggle = () => {
+    const enabled = document.body.classList.toggle('projector-mode');
+    btn.textContent = enabled ? '✕ Выйти из проектора' : '📽 Проектор';
+    showToast(enabled ? 'Режим проектора включён (нажмите F для выхода)' : 'Режим проектора выключен');
+  };
+
+  btn.addEventListener('click', toggle);
+  window.addEventListener('keydown', (e) => {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable) {
+      return;
+    }
+    if ((e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      toggle();
+    } else if (e.altKey && (e.key === 'p' || e.key === 'P')) {
+      e.preventDefault();
+      toggle();
+    }
+  });
+}
+
 // ============================================================================
 // Инициализация
 // ============================================================================
@@ -1798,5 +1930,6 @@ loadState();
 updateProgressUI();
 setupGlobalActions();
 setupContestTimer();
+setupProjectorMode();
 window.addEventListener('hashchange', renderCurrentRoute);
 renderCurrentRoute();

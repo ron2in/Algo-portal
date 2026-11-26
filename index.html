@@ -74,9 +74,9 @@
           <a href="#timbook" id="open-cheatsheet-btn" class="btn btn-secondary btn-xs">📘 Тимбук <span id="cheatsheet-count" class="badge badge-muted">0</span></a>
         </div>
         <div class="io-actions">
-          <button id="export-progress-btn" class="btn btn-ghost btn-xs" title="Экспорт прогресса в JSON">Экспорт JSON</button>
-          <label class="btn btn-ghost btn-xs import-label" title="Импорт прогресса из JSON">
-            Импорт JSON
+          <button id="export-progress-btn" class="btn btn-secondary btn-xs" title="Сохранить прогресс и заметки в JSON">💾 Сохранить бэкап (.json)</button>
+          <label class="btn btn-secondary btn-xs import-label" title="Загрузить прогресс и заметки из JSON">
+            📂 Загрузить бэкап
             <input type="file" id="import-progress-input" accept=".json,application/json" hidden>
           </label>
         </div>
@@ -100,6 +100,7 @@
           <span id="timer-display" class="mono timer-display">00:00</span>
           <button type="button" id="timer-start-btn" class="btn btn-primary btn-xs">▶ Старт</button>
           <button type="button" id="timer-reset-btn" class="btn btn-ghost btn-xs">↺ Сброс</button>
+          <button type="button" id="projector-mode-btn" class="btn btn-secondary btn-xs" title="Режим проектора (F или Alt+P)">📽 Проектор</button>
         </div>
       </div>
 

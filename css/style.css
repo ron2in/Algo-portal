@@ -2041,6 +2041,93 @@ code, pre, .mono {
 }
 
 /* ==========================================================================
+   Player Hotkeys Hint, Codeforces Paste Box & Projector Mode
+   ========================================================================== */
+.player-hotkeys-hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.player-hotkeys-hint kbd {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-solid);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-light);
+}
+
+.cf-import-box {
+  margin-top: 8px;
+  background: var(--bg-main);
+  border: 1px dashed var(--border-solid);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+.cf-import-box summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--accent-light);
+  font-weight: 500;
+}
+
+.cf-textarea {
+  width: 100%;
+  min-height: 76px;
+  margin: 8px 0;
+  background: var(--bg-code);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  resize: vertical;
+}
+
+/* Projector / Presentation Mode */
+body.projector-mode .sidebar,
+body.projector-mode .mobile-header {
+  display: none !important;
+}
+
+body.projector-mode .main-content {
+  max-width: 100%;
+  padding: 20px 34px 40px;
+}
+
+body.projector-mode .trace-code-lines,
+body.projector-mode .code-pre {
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+body.projector-mode .array-cell {
+  width: 58px;
+  height: 58px;
+  font-size: 19px;
+}
+
+body.projector-mode .array-index,
+body.projector-mode .graph-dist-badge {
+  font-size: 13.5px;
+}
+
+body.projector-mode .graph-node-label {
+  font-size: 16px;
+}
+
+body.projector-mode .step-explanation {
+  font-size: 16.5px;
+}
+
+/* ==========================================================================
    Print Cheatsheet Styles (ICPC Two-Column Timbook)
    ========================================================================== */
 .print-only-area {
