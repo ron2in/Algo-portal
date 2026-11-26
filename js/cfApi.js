@@ -120,3 +120,46 @@ export async function fetchCfProblems(topicId, ratingRange = 'all', count = 5) {
   }
   return { tag, items: pool.slice(0, count) };
 }
+
+export async function fetchCfUserProfile(handle) {
+  const cleanHandle = String(handle || '').trim();
+  if (!cleanHandle) throw new Error('Введите хендл Codeforces.');
+
+  const wait1 = Math.max(0, RATE_LIMIT_MS - (Date.now() - lastRequestTs));
+  if (wait1 > 0) await new Promise((r) => setTimeout(r, wait1));
+  lastRequestTs = Date.now();
+
+  const infoResp = await fetch(`https://codeforces.com/api/user.info?handles=${encodeURIComponent(cleanHandle)}`);
+  if (!infoResp.ok) throw new Error(`HTTP ${infoResp.status}`);
+  const infoJson = await infoResp.json();
+  if (infoJson.status !== 'OK' || !infoJson.result?.length) {
+    throw new Error('Пользователь не найден на Codeforces.');
+  }
+  const user = infoJson.result[0];
+
+  const wait2 = Math.max(0, RATE_LIMIT_MS - (Date.now() - lastRequestTs));
+  if (wait2 > 0) await new Promise((r) => setTimeout(r, wait2));
+  lastRequestTs = Date.now();
+
+  const statusResp = await fetch(`https://codeforces.com/api/user.status?handle=${encodeURIComponent(cleanHandle)}`);
+  if (!statusResp.ok) throw new Error(`HTTP ${statusResp.status}`);
+  const statusJson = await statusResp.json();
+  if (statusJson.status !== 'OK') {
+    throw new Error('Не удалось загрузить посылки пользователя.');
+  }
+
+  const solved = new Set();
+  for (const sub of statusJson.result || []) {
+    if (sub.verdict === 'OK' && sub.problem?.contestId && sub.problem?.index) {
+      solved.add(`${sub.problem.contestId}${sub.problem.index}`);
+    }
+  }
+
+  return {
+    handle: user.handle,
+    rating: user.rating || 1200,
+    rank: user.rank || 'unrated',
+    solved: [...solved],
+    syncedAt: new Date().toISOString()
+  };
+}

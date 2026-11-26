@@ -8,10 +8,11 @@ export class StepPlayer {
    * @param {Function} options.onRenderFrame - Колбэк (frame, index, total)
    * @param {Function} [options.onGuessState] - Колбэк (guessInfo | null) при режиме «Угадай следующий шаг»
    */
-  constructor({ container, onRenderFrame, onGuessState }) {
+  constructor({ container, onRenderFrame, onGuessState, onNotice }) {
     this.container = container;
     this.onRenderFrame = onRenderFrame;
     this.onGuessState = onGuessState || (() => {});
+    this.onNotice = onNotice || (() => {});
 
     this.frames = [];
     this.index = 0;
@@ -21,6 +22,8 @@ export class StepPlayer {
     this.guessMode = false;
     this.pendingGuess = null; // { targetFrameIndex, expected, prompt }
     this.solvedIndices = new Set();
+    this.breakpoints = new Set();
+    this.watchLog = [];
 
     this._renderControls();
   }
@@ -31,10 +34,79 @@ export class StepPlayer {
     this.index = 0;
     this.pendingGuess = null;
     this.solvedIndices.clear();
+    this.watchLog = this._computeWatchLog(this.frames);
     this.onGuessState(null);
     this._syncUI();
     if (this.frames.length > 0) {
       this.onRenderFrame(this.frames[0], 0, this.frames.length);
+    }
+  }
+
+  _computeWatchLog(frames) {
+    const log = [];
+    if (frames.length < 2) return log;
+    let prevVars = frames[0].vars || {};
+    for (let i = 1; i < frames.length; i++) {
+      const curVars = frames[i].vars || {};
+      const changes = [];
+      for (const [k, v] of Object.entries(curVars)) {
+        if (prevVars[k] !== undefined && String(prevVars[k]) !== String(v)) {
+          changes.push(`${k}: ${prevVars[k]} → ${v}`);
+        }
+      }
+      if (changes.length > 0) {
+        log.push({ frameIndex: i, text: `Шаг ${i + 1}: ${changes.slice(0, 2).join(', ')}` });
+      }
+      prevVars = curVars;
+    }
+    return log;
+  }
+
+  toggleBreakpoint(lineIdx) {
+    if (this.breakpoints.has(lineIdx)) {
+      this.breakpoints.delete(lineIdx);
+      return false;
+    }
+    this.breakpoints.add(lineIdx);
+    return true;
+  }
+
+  runToBreakpoint() {
+    if (this.frames.length === 0) return false;
+    if (this.breakpoints.size === 0) {
+      this.onNotice('Сначала поставьте точку останова кликом по номеру строки.');
+      return false;
+    }
+    for (let i = this.index + 1; i < this.frames.length; i++) {
+      if (this.breakpoints.has(this.frames[i].line)) {
+        this.goTo(i);
+        return true;
+      }
+    }
+    this.onNotice('До конца выполнения ни одна точка останова не сработала.');
+    return false;
+  }
+
+  stepUntil(mode) {
+    if (this.frames.length === 0) return;
+    if (mode === 'half') {
+      this.goTo(Math.floor(this.frames.length / 2));
+      return;
+    }
+    if (mode === 'end') {
+      this.goTo(this.frames.length - 1);
+      return;
+    }
+    if (mode === 'var-change') {
+      const curVars = this.frames[this.index]?.vars || {};
+      const curSnap = JSON.stringify(curVars);
+      for (let i = this.index + 1; i < this.frames.length; i++) {
+        if (JSON.stringify(this.frames[i].vars || {}) !== curSnap) {
+          this.goTo(i);
+          return;
+        }
+      }
+      this.onNotice('До конца выполнения переменные больше не меняются.');
     }
   }
 
@@ -179,6 +251,13 @@ export class StepPlayer {
           <button type="button" class="btn btn-primary btn-sm" data-action="toggle" title="Play / Pause">▶ Старт</button>
           <button type="button" class="btn btn-secondary btn-sm" data-action="next" title="Шаг вперёд">&gt;</button>
           <button type="button" class="btn btn-secondary btn-sm" data-action="end" title="В конец">&gt;|</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-action="bp" title="До точки останова (F9)">🔴 До BP (F9)</button>
+          <select class="select-field timer-select" data-role="step-until" aria-label="Перемотать до" style="margin-left:4px;">
+            <option value="">Перемотать до...</option>
+            <option value="var-change">Изменения переменной</option>
+            <option value="half">Середины алгоритма</option>
+            <option value="end">Конца алгоритма</option>
+          </select>
         </div>
         <div class="player-scrubber">
           <input type="range" class="range-slider" data-role="scrubber" min="0" max="0" value="0" aria-label="Шкала кадров">
@@ -193,6 +272,7 @@ export class StepPlayer {
       <div class="player-hotkeys-hint">
         <span><kbd>Space</kbd> Старт/Пауза</span>
         <span><kbd>←</kbd> <kbd>→</kbd> Шаг</span>
+        <span><kbd>F9</kbd> До BP</span>
         <span><kbd>Home</kbd> <kbd>End</kbd> Край</span>
         <span><kbd>+</kbd> <kbd>-</kbd> Скорость</span>
       </div>
@@ -203,6 +283,8 @@ export class StepPlayer {
     this.btnToggle = this.container.querySelector('[data-action="toggle"]');
     this.btnNext = this.container.querySelector('[data-action="next"]');
     this.btnEnd = this.container.querySelector('[data-action="end"]');
+    this.btnBp = this.container.querySelector('[data-action="bp"]');
+    this.stepUntilSelect = this.container.querySelector('[data-role="step-until"]');
     this.scrubber = this.container.querySelector('[data-role="scrubber"]');
     this.counter = this.container.querySelector('[data-role="counter"]');
     this.speedInput = this.container.querySelector('[data-role="speed"]');
@@ -213,6 +295,13 @@ export class StepPlayer {
     this.btnToggle.addEventListener('click', () => this.togglePlay());
     this.btnNext.addEventListener('click', () => this.stepForward(false));
     this.btnEnd.addEventListener('click', () => this.goTo(this.frames.length - 1));
+    this.btnBp.addEventListener('click', () => this.runToBreakpoint());
+    this.stepUntilSelect.addEventListener('change', (e) => {
+      if (e.target.value) {
+        this.stepUntil(e.target.value);
+        e.target.value = '';
+      }
+    });
 
     this.scrubber.addEventListener('input', (e) => {
       this.goTo(Number(e.target.value));
@@ -242,6 +331,9 @@ export class StepPlayer {
       } else if (e.code === 'End') {
         e.preventDefault();
         this.goTo(this.frames.length - 1);
+      } else if (e.code === 'F9') {
+        e.preventDefault();
+        this.runToBreakpoint();
       } else if (e.key === '+' || e.key === '=') {
         this._setSpeed(Math.min(3, this.speedMultiplier + 0.25));
       } else if (e.key === '-' || e.key === '_') {

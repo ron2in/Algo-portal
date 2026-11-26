@@ -14,7 +14,7 @@ import {
 } from './tools.js';
 import { renderDebugHuntView, renderAlgoSelectorView } from './advancedTools.js';
 import { runPythonTests, getTestsForTopic } from './pyodideRunner.js';
-import { fetchCfProblems, getCfTagForTopic } from './cfApi.js';
+import { fetchCfProblems, getCfTagForTopic, fetchCfUserProfile } from './cfApi.js';
 
 const STORAGE_KEY = 'algoportal_state_v1';
 
@@ -22,6 +22,7 @@ const state = {
   completed: new Set(),
   cheatsheet: new Set(),
   notes: {},
+  cfProfile: null,
   searchQuery: '',
   roadmapCategory: 'Все',
   activePlayer: null,
@@ -45,6 +46,9 @@ function loadState() {
     if (parsed.notes && typeof parsed.notes === 'object') {
       state.notes = parsed.notes;
     }
+    if (parsed.cfProfile && typeof parsed.cfProfile === 'object') {
+      state.cfProfile = parsed.cfProfile;
+    }
   } catch {
     // Игнорируем повреждённый JSON в localStorage
   }
@@ -54,7 +58,8 @@ function saveState() {
   const payload = {
     completed: [...state.completed],
     cheatsheet: [...state.cheatsheet],
-    notes: state.notes
+    notes: state.notes,
+    cfProfile: state.cfProfile
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   updateProgressUI();
@@ -499,6 +504,10 @@ function renderInteractiveWorkspace(container, topic) {
             <div style="font-size:11.5px; color:var(--text-secondary); margin-bottom:6px;">Текущие переменные:</div>
             <div id="variables-grid" class="variables-grid"></div>
           </div>
+          <details class="watchlist-box">
+            <summary>📋 Лог изменений переменных (Watchlist)</summary>
+            <div id="watchlist-items" class="watchlist-items"></div>
+          </details>
         </div>
       </div>
 
@@ -530,6 +539,7 @@ function renderInteractiveWorkspace(container, topic) {
 
   const player = new StepPlayer({
     container: document.getElementById('player-controls-mount'),
+    onNotice: showToast,
     onGuessState: (info) => {
       if (!info) {
         guessBanner.hidden = true;
@@ -653,7 +663,34 @@ function renderInteractiveWorkspace(container, topic) {
   function runVisualization() {
     const frames = topic.generateFrames(currentData);
     player.setFrames(frames);
+
+    const wl = document.getElementById('watchlist-items');
+    if (wl) {
+      wl.innerHTML = player.watchLog.length
+        ? player.watchLog
+            .map(
+              (item) =>
+                `<div class="watchlist-item" data-wl-idx="${item.frameIndex}">${escapeHtml(item.text)}</div>`
+            )
+            .join('')
+        : '<div style="color:var(--text-secondary);">Изменений не зафиксировано.</div>';
+
+      wl.querySelectorAll('[data-wl-idx]').forEach((el) => {
+        el.addEventListener('click', () => {
+          player.goTo(Number(el.getAttribute('data-wl-idx')));
+        });
+      });
+    }
   }
+
+  container.querySelectorAll('.trace-line-num').forEach((numEl) => {
+    numEl.title = 'Поставить / снять точку останова (F9)';
+    numEl.addEventListener('click', () => {
+      const lineIdx = Number(numEl.parentElement.getAttribute('data-line'));
+      const active = player.toggleBreakpoint(lineIdx);
+      numEl.classList.toggle('bp-active', active);
+    });
+  });
 
   function rebuildCustomForm() {
     const inputType = topic.customInputType || (topic.engine === 'array' ? 'array-target' : topic.engine);
@@ -1519,11 +1556,16 @@ function renderInteractiveWorkspace(container, topic) {
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <select id="cf-rating-filter" class="select-field" style="width:auto; padding:4px 8px; font-size:12.5px;">
               <option value="all">Любой рейтинг</option>
+              <option value="my-rating">Под мой рейтинг (+100..200)</option>
               <option value="800-1100">800–1100</option>
               <option value="1200-1500">1200–1500</option>
               <option value="1600-1900">1600–1900</option>
               <option value="2000+">2000+</option>
             </select>
+            <label class="checkbox-pill" style="padding:4px 8px; font-size:12.5px;">
+              <input type="checkbox" id="cf-hide-solved">
+              <span>Скрывать решённые</span>
+            </label>
             <button type="button" id="cf-refresh-btn" class="btn btn-secondary btn-xs">🔄 Обновить подборку задач</button>
           </div>
         </div>
@@ -1548,32 +1590,37 @@ function renderInteractiveWorkspace(container, topic) {
       const cfStatus = document.getElementById('cf-status-msg');
       const cfList = document.getElementById('cf-problems-list');
       const cfRating = document.getElementById('cf-rating-filter');
+      const cfHideSolved = document.getElementById('cf-hide-solved');
       const cfRefresh = document.getElementById('cf-refresh-btn');
 
       async function loadCfProblems() {
         cfStatus.textContent = '⏳ Загрузка задач с Codeforces...';
         cfRefresh.disabled = true;
         try {
-          const { items } = await fetchCfProblems(topic.id, cfRating.value, 5);
-          if (items.length === 0) {
-            cfStatus.textContent = 'По выбранному рейтингу задач не найдено — показаны базовые задачи темы.';
-            cfList.innerHTML = staticProblemsHtml;
-          } else {
-            cfStatus.textContent = `Показано ${items.length} случайных задач с Codeforces (кэш 30 мин):`;
-            cfList.innerHTML = items
-              .map(
-                (pr) => `
-                <a href="${pr.url}" target="_blank" rel="noopener noreferrer" class="problem-link-card">
-                  <div>
-                    <div style="font-weight:500; font-size:14px;"><span class="mono" style="color:var(--accent-light);">${escapeHtml(pr.code)}</span> ${escapeHtml(pr.name)}</div>
-                    <div style="font-size:12px; color:var(--text-secondary);">Решили: ${pr.solvedCount}</div>
-                  </div>
-                  <span class="badge badge-accent">${pr.rating}</span>
-                </a>
-              `
-              )
-              .join('');
+          let ratingArg = cfRating.value;
+          const solvedSet = new Set(state.cfProfile?.solved || []);
+
+          if (ratingArg === 'my-rating') {
+            if (!state.cfProfile) {
+              cfStatus.textContent = 'Синхронизируйте профиль CF в сайдбаре, чтобы использовать фильтр по вашему рейтингу.';
+              ratingArg = 'all';
+            } else {
+              const r = state.cfProfile.rating || 1200;
+              const lo = Math.max(800, r - 100);
+              const hi = r + 200;
+              const { items: rawAll } = await fetchCfProblems(topic.id, 'all', 40);
+              const matched = rawAll
+                .filter((p) => p.rating >= lo && p.rating <= hi && (!cfHideSolved.checked || !solvedSet.has(p.code)))
+                .slice(0, 5);
+              renderCfItems(matched, solvedSet, `Показано ${matched.length} задач под ваш рейтинг (${lo}–${hi}):`);
+              return;
+            }
           }
+
+          const { items: rawItems } = await fetchCfProblems(topic.id, ratingArg, 20);
+          const filtered = cfHideSolved.checked ? rawItems.filter((p) => !solvedSet.has(p.code)) : rawItems;
+          const finalItems = filtered.slice(0, 5);
+          renderCfItems(finalItems, solvedSet, `Показано ${finalItems.length} случайных задач с Codeforces (кэш 30 мин):`);
         } catch {
           cfStatus.textContent = 'API Codeforces временно недоступен — показаны сохранённые задачи темы.';
           cfList.innerHTML = staticProblemsHtml;
@@ -1582,7 +1629,34 @@ function renderInteractiveWorkspace(container, topic) {
         }
       }
 
+      function renderCfItems(items, solvedSet, okText) {
+        if (items.length === 0) {
+          cfStatus.textContent = 'По выбранным фильтрам задач не найдено — показаны базовые задачи темы.';
+          cfList.innerHTML = staticProblemsHtml;
+          return;
+        }
+        cfStatus.textContent = okText;
+        cfList.innerHTML = items
+          .map((pr) => {
+            const isAc = solvedSet.has(pr.code);
+            return `
+              <a href="${pr.url}" target="_blank" rel="noopener noreferrer" class="problem-link-card">
+                <div>
+                  <div style="font-weight:500; font-size:14px;">
+                    <span class="mono" style="color:var(--accent-light);">${escapeHtml(pr.code)}</span> ${escapeHtml(pr.name)}
+                    ${isAc ? '<span class="badge badge-success" style="margin-left:4px;">✓ AC</span>' : ''}
+                  </div>
+                  <div style="font-size:12px; color:var(--text-secondary);">Решили: ${pr.solvedCount}</div>
+                </div>
+                <span class="badge badge-accent">${pr.rating}</span>
+              </a>
+            `;
+          })
+          .join('');
+      }
+
       cfRating.addEventListener('change', loadCfProblems);
+      cfHideSolved.addEventListener('change', loadCfProblems);
       cfRefresh.addEventListener('click', loadCfProblems);
       loadCfProblems();
 
@@ -1980,12 +2054,52 @@ function setupProjectorMode() {
 }
 
 // ============================================================================
-// Инициализация
+// Инициализация и синхронизация профиля Codeforces
 // ============================================================================
+function setupCfProfileSync() {
+  const handleInput = document.getElementById('cf-handle-input');
+  const syncBtn = document.getElementById('cf-sync-btn');
+  const infoEl = document.getElementById('cf-profile-info');
+  if (!handleInput || !syncBtn || !infoEl) return;
+
+  const renderBadge = () => {
+    if (!state.cfProfile) {
+      infoEl.textContent = 'Профиль CF не подключён';
+      return;
+    }
+    handleInput.value = state.cfProfile.handle;
+    infoEl.innerHTML = `<span style="color:var(--accent-light); font-weight:600;">${escapeHtml(state.cfProfile.handle)}</span> • ${state.cfProfile.rating} (${escapeHtml(state.cfProfile.rank)}) • AC: ${state.cfProfile.solved.length}`;
+  };
+
+  syncBtn.addEventListener('click', async () => {
+    const h = handleInput.value.trim();
+    if (!h) {
+      showToast('Введите хендл Codeforces');
+      return;
+    }
+    syncBtn.disabled = true;
+    infoEl.textContent = '⏳ Синхронизация...';
+    try {
+      state.cfProfile = await fetchCfUserProfile(h);
+      saveState();
+      renderBadge();
+      showToast(`Профиль ${state.cfProfile.handle} синхронизирован!`);
+    } catch (err) {
+      infoEl.textContent = `Ошибка: ${err.message}`;
+      showToast(`Ошибка CF: ${err.message}`);
+    } finally {
+      syncBtn.disabled = false;
+    }
+  });
+
+  renderBadge();
+}
+
 loadState();
 updateProgressUI();
 setupGlobalActions();
 setupContestTimer();
 setupProjectorMode();
+setupCfProfileSync();
 window.addEventListener('hashchange', renderCurrentRoute);
 renderCurrentRoute();
