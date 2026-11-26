@@ -5,6 +5,7 @@ import { renderGraphFrame } from './engines/graphEngine.js';
 import { renderGridFrame } from './engines/gridEngine.js';
 import { renderTreeFrame } from './engines/treeEngine.js';
 import { renderMathFrame } from './engines/mathEngine.js';
+import { renderStringFrame } from './engines/stringEngine.js';
 import {
   renderGeneratorView,
   renderStlView,
@@ -624,6 +625,13 @@ function renderInteractiveWorkspace(container, topic) {
             if (player.pendingGuess) player.submitGuess(nodeId);
           }
         });
+      } else if (topic.engine === 'string') {
+        renderStringFrame(stageCanvas, frame, {
+          clickable: Boolean(player.pendingGuess || player.guessMode),
+          onCharClick: (idx) => {
+            if (player.pendingGuess) player.submitGuess(idx);
+          }
+        });
       } else if (topic.engine === 'math') {
         renderMathFrame(stageCanvas, frame, {
           clickable: Boolean(player.pendingGuess || player.guessMode),
@@ -1177,6 +1185,119 @@ function renderInteractiveWorkspace(container, topic) {
         e.preventDefault();
         currentData.u = Number(document.getElementById('lca-u').value);
         currentData.v = Number(document.getElementById('lca-v').value);
+        runVisualization();
+      });
+    } else if (inputType === 'string-algo') {
+      customInputArea.innerHTML = `
+        <form id="str-custom-form" class="custom-input-form">
+          <div class="form-field" style="max-width:190px;">
+            <label for="str-mode">Алгоритм</label>
+            <select id="str-mode" class="select-field">
+              <option value="pi" ${currentData.algoMode === 'pi' ? 'selected' : ''}>Префикс-функция π[i]</option>
+              <option value="z" ${currentData.algoMode === 'z' ? 'selected' : ''}>Z-функция Z[i]</option>
+            </select>
+          </div>
+          <div class="form-field" style="flex:2;">
+            <label for="str-text">Строка (можно pattern#text, до 24 симв.)</label>
+            <input id="str-text" type="text" class="input-field input-mono" value="${escapeHtml(currentData.text)}" maxlength="24">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Запустить</button>
+          <div id="custom-form-err" class="form-error" hidden></div>
+        </form>
+      `;
+      document.getElementById('str-custom-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const errEl = document.getElementById('custom-form-err');
+        const txt = document.getElementById('str-text').value.trim();
+        const mode = document.getElementById('str-mode').value;
+        if (txt.length < 2 || txt.length > 24) {
+          errEl.textContent = 'Введите строку длиной от 2 до 24 символов.';
+          errEl.hidden = false;
+          return;
+        }
+        errEl.hidden = true;
+        currentData = { text: txt, algoMode: mode };
+        runVisualization();
+      });
+    } else if (inputType === 'fenwick') {
+      customInputArea.innerHTML = `
+        <form id="fenwick-custom-form" class="custom-input-form">
+          <div class="form-field" style="flex:2;">
+            <label for="fw-arr">Массив a[1..n] (до 12 чисел)</label>
+            <input id="fw-arr" type="text" class="input-field input-mono" value="${currentData.array.join(', ')}">
+          </div>
+          <div class="form-field" style="max-width:95px;">
+            <label for="fw-r">sum(r)</label>
+            <input id="fw-r" type="number" class="input-field input-mono" value="${currentData.queryR}" min="1">
+          </div>
+          <div class="form-field" style="max-width:95px;">
+            <label for="fw-idx">add idx</label>
+            <input id="fw-idx" type="number" class="input-field input-mono" value="${currentData.addIdx}" min="1">
+          </div>
+          <div class="form-field" style="max-width:95px;">
+            <label for="fw-delta">delta</label>
+            <input id="fw-delta" type="number" class="input-field input-mono" value="${currentData.addDelta}">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Запустить</button>
+          <div id="custom-form-err" class="form-error" hidden></div>
+        </form>
+      `;
+      document.getElementById('fenwick-custom-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const errEl = document.getElementById('custom-form-err');
+        const nums = document.getElementById('fw-arr').value.trim().split(/[\s,;]+/).filter(Boolean).map(Number);
+        const qr = Number(document.getElementById('fw-r').value);
+        const idx = Number(document.getElementById('fw-idx').value);
+        const delta = Number(document.getElementById('fw-delta').value);
+        if (nums.length < 2 || nums.length > 12 || nums.some(Number.isNaN)) {
+          errEl.textContent = 'Введите от 2 до 12 чисел.';
+          errEl.hidden = false;
+          return;
+        }
+        if (Number.isNaN(qr) || qr < 1 || qr > nums.length || Number.isNaN(idx) || idx < 1 || idx > nums.length || Number.isNaN(delta)) {
+          errEl.textContent = `Укажите индексы в диапазоне 1..${nums.length}.`;
+          errEl.hidden = false;
+          return;
+        }
+        errEl.hidden = true;
+        currentData = { array: nums, queryR: qr, addIdx: idx, addDelta: delta };
+        runVisualization();
+      });
+    } else if (inputType === 'two-strings') {
+      customInputArea.innerHTML = `
+        <form id="twostr-custom-form" class="custom-input-form">
+          <div class="form-field" style="max-width:190px;">
+            <label for="ts-mode">Задача</label>
+            <select id="ts-mode" class="select-field">
+              <option value="lcs" ${currentData.algoMode === 'lcs' ? 'selected' : ''}>LCS (подпоследовательность)</option>
+              <option value="levenshtein" ${currentData.algoMode === 'levenshtein' ? 'selected' : ''}>Расстояние Левенштейна</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="ts-s1">Строка s1 (1..8)</label>
+            <input id="ts-s1" type="text" class="input-field input-mono" value="${escapeHtml(currentData.s1)}" maxlength="8">
+          </div>
+          <div class="form-field">
+            <label for="ts-s2">Строка s2 (1..8)</label>
+            <input id="ts-s2" type="text" class="input-field input-mono" value="${escapeHtml(currentData.s2)}" maxlength="8">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Запустить</button>
+          <div id="custom-form-err" class="form-error" hidden></div>
+        </form>
+      `;
+      document.getElementById('twostr-custom-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const errEl = document.getElementById('custom-form-err');
+        const s1 = document.getElementById('ts-s1').value.trim();
+        const s2 = document.getElementById('ts-s2').value.trim();
+        const mode = document.getElementById('ts-mode').value;
+        if (!s1 || !s2 || s1.length > 8 || s2.length > 8) {
+          errEl.textContent = 'Введите две непустые строки длиной до 8 символов.';
+          errEl.hidden = false;
+          return;
+        }
+        errEl.hidden = true;
+        currentData = { s1, s2, algoMode: mode };
         runVisualization();
       });
     } else if (topic.engine === 'graph') {

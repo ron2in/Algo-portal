@@ -1772,17 +1772,621 @@ struct SegTree {
   },
   {
     id: 'prefix-function',
-    title: 'Префикс-функция (алгоритм КМП)',
+    title: 'Префикс-функция (КМП) и Z-функция',
     category: 'Строки',
     difficulty: 'Средний',
-    isStub: true,
+    isStub: false,
+    engine: 'string',
+    customInputType: 'string-algo',
     timeComplexity: 'O(N)',
     spaceComplexity: 'O(N)',
     summary:
-      'Вычисление длины наибольшего собственного суффикса, совпадающего с префиксом, для поиска подстроки в строке за линейное время.',
+      'Префикс-функция π[i] — длина наибольшего собственного суффикса подстроки s[0..i], совпадающего с её префиксом. Z-функция z[i] — длина наибольшего общего префикса строки s и её суффикса s[i..n-1]. Обе вычисляются за линейное время O(N) и позволяют находить все вхождения шаблона P в текст T через строку P + "#" + T.',
     pitfalls: [
-      'Забытый символ-разделитель # при конкатенации pattern + "#" + text приводит к ложным значениям > |pattern|.'
-    ]
+      'Забытый символ-разделитель # (не встречающийся в P и T) при конкатенации P + "#" + T приводит к ложным значениям > |P|.',
+      'В Z-функции важно не забывать обновлять границы самого правого Z-блока [l, r] только при i + z[i] - 1 > r.',
+      'Индекс вхождения шаблона в текст при P + "#" + T: если π[i] == |P|, то начало вхождения в исходном T имеет индекс i - 2·|P|.'
+    ],
+    traceCode: [
+      '// Префикс-функция π[i]:',
+      'for (int i = 1; i < n; ++i) {',
+      '    int j = pi[i - 1];',
+      '    while (j > 0 && s[i] != s[j]) j = pi[j - 1];',
+      '    if (s[i] == s[j]) ++j;',
+      '    pi[i] = j;',
+      '}',
+      '// Z-функция: Z-блок [l, r]:',
+      'for (int i = 1, l = 0, r = 0; i < n; ++i) {',
+      '    if (i <= r) z[i] = min(r - i + 1, z[i - l]);',
+      '    while (i + z[i] < n && s[z[i]] == s[i + z[i]]) ++z[i];',
+      '    if (i + z[i] - 1 > r) { l = i; r = i + z[i] - 1; }',
+      '}'
+    ],
+    presets: [
+      { id: 'pi-classic', label: 'π-функция: abacabadabacabae', data: { text: 'abacabadabacabae', algoMode: 'pi' } },
+      { id: 'kmp-search', label: 'КМП поиск: aba#abacaba', data: { text: 'aba#abacaba', algoMode: 'pi' } },
+      { id: 'z-classic', label: 'Z-функция: aabxaabxcaabx', data: { text: 'aabxaabxcaabx', algoMode: 'z' } }
+    ],
+    generateFrames({ text, algoMode = 'pi' }) {
+      const s = text;
+      const n = s.length;
+      const frames = [];
+      const hashIdx = s.indexOf('#');
+
+      if (algoMode === 'pi') {
+        const pi = new Array(n).fill(null);
+        pi[0] = 0;
+        const matches = [];
+
+        frames.push({
+          mode: 'pi',
+          text: s,
+          values: [...pi],
+          valuesLabel: 'π[i]',
+          prefixRange: null,
+          suffixRange: null,
+          compareIndices: [],
+          matchIndices: [],
+          line: 0,
+          vars: { режим: 'π-функция (КМП)', i: 0, 'π[0]': 0 },
+          explanation: `Инициализация: π[0] = 0. Будем последовательно вычислять π[i] для i = 1..${n - 1}.`
+        });
+
+        for (let i = 1; i < n; i++) {
+          let j = pi[i - 1];
+          while (j > 0 && s[i] !== s[j]) {
+            frames.push({
+              mode: 'pi',
+              text: s,
+              values: [...pi],
+              valuesLabel: 'π[i]',
+              prefixRange: [0, j - 1],
+              suffixRange: [i - j, i - 1],
+              compareIndices: [i, j],
+              matchIndices: [...matches],
+              arc: { from: j, to: i },
+              line: 3,
+              vars: { i, j, 's[i]': s[i], 's[j]': s[j] },
+              explanation: `Несовпадение s[${i}] ('${s[i]}') ≠ s[${j}] ('${s[j]}'): откатываемся j = π[${j - 1}] = ${pi[j - 1]}.`
+            });
+            j = pi[j - 1];
+          }
+
+          if (s[i] === s[j]) j++;
+          pi[i] = j;
+          if (hashIdx > 0 && j === hashIdx) matches.push(i);
+
+          frames.push({
+            mode: 'pi',
+            text: s,
+            values: [...pi],
+            valuesLabel: 'π[i]',
+            prefixRange: j > 0 ? [0, j - 1] : null,
+            suffixRange: j > 0 ? [i - j + 1, i] : null,
+            compareIndices: [i],
+            matchIndices: [...matches],
+            arc: j > 0 ? { from: j - 1, to: i } : null,
+            line: 5,
+            vars: { i, 'π[i]': j, 's[i]': s[i] },
+            guess:
+              i === Math.min(3, n - 1)
+                ? {
+                    expected: i,
+                    prompt: `Кликните по текущему символу s[${i}], для которого вычислено π[${i}] = ${j}.`
+                  }
+                : undefined,
+            explanation: `Устанавливаем π[${i}] = ${j}${hashIdx > 0 && j === hashIdx ? ' — найдено вхождение шаблона!' : '.'}`
+          });
+        }
+        return frames;
+      }
+
+      // Z-функция
+      const z = new Array(n).fill(null);
+      z[0] = 0;
+      let l = 0;
+      let r = 0;
+      const matches = [];
+
+      frames.push({
+        mode: 'z',
+        text: s,
+        values: [...z],
+        valuesLabel: 'Z[i]',
+        prefixRange: null,
+        suffixRange: null,
+        compareIndices: [],
+        matchIndices: [],
+        line: 8,
+        vars: { режим: 'Z-функция', l: 0, r: 0 },
+        explanation: `Инициализация Z-функции: Z[0] = 0, начальный Z-блок [l, r] = [0, 0].`
+      });
+
+      for (let i = 1; i < n; i++) {
+        let zi = 0;
+        if (i <= r) zi = Math.min(r - i + 1, z[i - l]);
+        while (i + zi < n && s[zi] === s[i + zi]) zi++;
+        z[i] = zi;
+        if (i + zi - 1 > r) {
+          l = i;
+          r = i + zi - 1;
+        }
+        if (hashIdx > 0 && zi === hashIdx) matches.push(i);
+
+        frames.push({
+          mode: 'z',
+          text: s,
+          values: [...z],
+          valuesLabel: 'Z[i]',
+          prefixRange: zi > 0 ? [0, zi - 1] : null,
+          suffixRange: zi > 0 ? [i, i + zi - 1] : null,
+          compareIndices: [i],
+          matchIndices: [...matches],
+          arc: zi > 0 ? { from: 0, to: i } : null,
+          line: 11,
+          vars: { i, 'Z[i]': zi, '[l, r]': `[${l}, ${r}]` },
+          explanation: `Позиция i = ${i}: Z[${i}] = ${zi}, текущий самый правый Z-блок [${l}, ${r}].`
+        });
+      }
+
+      return frames;
+    },
+    code: {
+      cpp: `#include <vector>
+#include <string>
+#include <algorithm>
+using namespace std;
+
+vector<int> prefix_function(const string& s) {
+    int n = (int)s.size();
+    vector<int> pi(n, 0);
+    for (int i = 1; i < n; ++i) {
+        int j = pi[i - 1];
+        while (j > 0 && s[i] != s[j]) j = pi[j - 1];
+        if (s[i] == s[j]) ++j;
+        pi[i] = j;
+    }
+    return pi;
+}
+
+vector<int> z_function(const string& s) {
+    int n = (int)s.size();
+    vector<int> z(n, 0);
+    for (int i = 1, l = 0, r = 0; i < n; ++i) {
+        if (i <= r) z[i] = min(r - i + 1, z[i - l]);
+        while (i + z[i] < n && s[z[i]] == s[i + z[i]]) ++z[i];
+        if (i + z[i] - 1 > r) { l = i; r = i + z[i] - 1; }
+    }
+    return z;
+}`,
+      python: `def prefix_function(s: str) -> list[int]:
+    pi = [0] * len(s)
+    for i in range(1, len(s)):
+        j = pi[i - 1]
+        while j > 0 and s[i] != s[j]:
+            j = pi[j - 1]
+        if s[i] == s[j]:
+            j += 1
+        pi[i] = j
+    return pi
+
+def z_function(s: str) -> list[int]:
+    n = len(s)
+    z = [0] * n
+    l = r = 0
+    for i in range(1, n):
+        if i <= r:
+            z[i] = min(r - i + 1, z[i - l])
+        while i + z[i] < n and s[z[i]] == s[i + z[i]]:
+            z[i] += 1
+        if i + z[i] - 1 > r:
+            l, r = i, i + z[i] - 1
+    return z`
+    },
+    problems: [
+      { title: 'CSES: String Matching', platform: 'CSES', difficulty: 'Easy', url: 'https://cses.fi/problemset/task/1753' },
+      { title: 'CSES: Finding Borders', platform: 'CSES', difficulty: 'Easy', url: 'https://cses.fi/problemset/task/1732' },
+      { title: 'CF #126B: Password', platform: 'Codeforces', difficulty: 'Medium', url: 'https://codeforces.com/problemset/problem/126/B' }
+    ],
+    quiz: {
+      snippet: `// Строка S = P + "#" + T, вычислена π-функция`,
+      question: 'Почему цикл while (j > 0 && s[i] != s[j]) j = pi[j - 1]; суммарно работает за O(N)?',
+      options: [
+        'Значение j увеличивается не более N раз (на 1 за итерацию i) и каждое срабатывание while уменьшает j ≥ 1',
+        'Массив pi всегда отсортирован',
+        'Цикл while выполняется не более 2 раз',
+        'Символы сравниваются только с началом строки'
+      ],
+      answer: 'Значение j увеличивается не более N раз (на 1 за итерацию i) и каждое срабатывание while уменьшает j ≥ 1',
+      explanation: 'Это классический амортизационный анализ: j растёт максимум на 1 на каждом шаге i и никогда не бывает отрицательным.'
+    }
+  },
+  {
+    id: 'fenwick-tree',
+    title: 'Дерево Фенвика (Binary Indexed Tree)',
+    category: 'Структуры данных',
+    difficulty: 'Средний',
+    isStub: false,
+    engine: 'array',
+    customInputType: 'fenwick',
+    timeComplexity: 'O(log N) запрос и обновление',
+    spaceComplexity: 'O(N)',
+    summary:
+      'Сверхкомпактная структура данных (BIT) для префиксных сумм и точечных обновлений за O(log N). В 1-индексации ячейка bit[i] отвечает за отрезок длиной i & -i (младший единичный бит числа i). Запрос sum(r) делает прыжки i -= i & -i, а обновление add(idx, delta) — i += i & -i.',
+    pitfalls: [
+      'Всегда используйте 1-индексацию для массива bit[1..n] (в 0-индексации формула i += i & -i зациклится при i = 0).',
+      'Для суммы на отрезке [l, r] в 1-индексации считайте sum(r) - sum(l - 1).',
+      'В отличие от дерева отрезков, классический Фенвик работает только для обратимых операций (+, XOR), но не для min/max на произвольном отрезке.'
+    ],
+    traceCode: [
+      'void add(int i, int delta) {',
+      '    for (; i <= n; i += i & -i) bit[i] += delta;',
+      '}',
+      'long long sum(int i) {',
+      '    long long res = 0;',
+      '    for (; i > 0; i -= i & -i) res += bit[i];',
+      '    return res;',
+      '}'
+    ],
+    presets: [
+      {
+        id: 'bit8',
+        label: 'Массив [3, 2, -1, 6, 5, 4, -3, 3]',
+        data: { array: [3, 2, -1, 6, 5, 4, -3, 3], queryR: 6, addIdx: 3, addDelta: 5 }
+      },
+      {
+        id: 'bit6',
+        label: 'Массив [1, 4, 2, 8, 5, 7]',
+        data: { array: [1, 4, 2, 8, 5, 7], queryR: 5, addIdx: 2, addDelta: 3 }
+      }
+    ],
+    generateFrames({ array, queryR, addIdx, addDelta }) {
+      const a = [...array];
+      const n = a.length;
+      const bit = new Array(n).fill(0);
+      const frames = [];
+
+      // Построение BIT
+      for (let i = 1; i <= n; i++) {
+        for (let j = i; j <= n; j += j & -j) {
+          bit[j - 1] += a[i - 1];
+        }
+      }
+
+      frames.push({
+        array: [...a],
+        primaryLabel: 'Исходный массив a[1..n]:',
+        secondaryArray: [...bit],
+        secondaryLabel: 'Массив Фенвика bit[1..n] (построен):',
+        secondaryHighlight: [],
+        pointers: {},
+        activeRange: null,
+        line: 0,
+        vars: { n, queryR, add: `a[${addIdx}] += ${addDelta}` },
+        explanation: `Построено дерево Фенвика bit[1..${n}]. Каждый bit[i] хранит сумму на отрезке длины i & -i.`
+      });
+
+      // Запрос sum(queryR)
+      let res = 0;
+      let i = queryR;
+      const visitedSum = [];
+      while (i > 0) {
+        const lsb = i & -i;
+        res += bit[i - 1];
+        visitedSum.push(i - 1);
+        frames.push({
+          array: [...a],
+          primaryLabel: 'Исходный массив a[1..n]:',
+          secondaryArray: [...bit],
+          secondaryLabel: 'Массив Фенвика bit[1..n] — запрос sum(r):',
+          secondaryHighlight: [...visitedSum],
+          pointers: { i: i - 1 },
+          activeRange: [i - lsb, i - 1],
+          midIndex: i - 1,
+          line: 5,
+          vars: { i, 'i & -i': lsb, 'отрезок bit[i]': `[${i - lsb + 1}, ${i}]`, res },
+          guess:
+            i === queryR
+              ? {
+                  expected: i - 1,
+                  prompt: `С какой ячейки начнётся запрос sum(${queryR})? Кликните по ячейке массива.`
+                }
+              : undefined,
+          explanation: `sum(${queryR}): прибавляем bit[${i}] = ${bit[i - 1]} (отрезок [${i - lsb + 1}, ${i}]), сумма = ${res}. Следующий прыжок: ${i} - ${lsb} = ${i - lsb}.`
+        });
+        i -= lsb;
+      }
+
+      frames.push({
+        array: [...a],
+        primaryLabel: 'Исходный массив a[1..n]:',
+        secondaryArray: [...bit],
+        secondaryLabel: 'Массив Фенвика bit[1..n]:',
+        secondaryHighlight: [...visitedSum],
+        pointers: {},
+        activeRange: [0, queryR - 1],
+        line: 6,
+        vars: { [`sum(${queryR})`]: res },
+        explanation: `Запрос sum(${queryR}) завершён: сумма префикса [1..${queryR}] равна ${res}.`
+      });
+
+      // Обновление add(addIdx, addDelta)
+      a[addIdx - 1] += addDelta;
+      let j = addIdx;
+      const visitedAdd = [];
+      while (j <= n) {
+        const lsb = j & -j;
+        bit[j - 1] += addDelta;
+        visitedAdd.push(j - 1);
+        frames.push({
+          array: [...a],
+          primaryLabel: `Исходный массив a[1..n] (a[${addIdx}] += ${addDelta}):`,
+          secondaryArray: [...bit],
+          secondaryLabel: 'Массив Фенвика bit[1..n] — обновление add():',
+          secondaryHighlight: [...visitedAdd],
+          pointers: { i: j - 1 },
+          activeRange: null,
+          foundIndex: j - 1,
+          line: 1,
+          vars: { i: j, 'i & -i': lsb, delta: addDelta, 'новый bit[i]': bit[j - 1] },
+          explanation: `add(${addIdx}, ${addDelta}): обновляем bit[${j}] → ${bit[j - 1]}. Следующий прыжок вверх: ${j} + ${lsb} = ${j + lsb}.`
+        });
+        j += lsb;
+      }
+
+      return frames;
+    },
+    code: {
+      cpp: `#include <vector>
+using namespace std;
+
+struct Fenwick {
+    int n;
+    vector<long long> bit;
+    Fenwick(int n) : n(n), bit(n + 1, 0) {}
+
+    void add(int i, long long delta) {
+        for (; i <= n; i += i & -i) bit[i] += delta;
+    }
+
+    long long sum(int i) const {
+        long long res = 0;
+        for (; i > 0; i -= i & -i) res += bit[i];
+        return res;
+    }
+
+    long long range_sum(int l, int r) const {
+        return sum(r) - sum(l - 1);
+    }
+};`,
+      python: `class Fenwick:
+    def __init__(self, n: int):
+        self.n = n
+        self.bit = [0] * (n + 1)
+
+    def add(self, i: int, delta: int) -> None:
+        while i <= self.n:
+            self.bit[i] += delta
+            i += i & -i
+
+    def sum(self, i: int) -> int:
+        res = 0
+        while i > 0:
+            res += self.bit[i]
+            i -= i & -i
+        return res
+
+    def range_sum(self, l: int, r: int) -> int:
+        return self.sum(r) - self.sum(l - 1)`
+    },
+    problems: [
+      { title: 'CSES: Dynamic Range Sum Queries', platform: 'CSES', difficulty: 'Easy', url: 'https://cses.fi/problemset/task/1648' },
+      { title: 'CF #1354D: Multiset', platform: 'Codeforces', difficulty: 'Medium', url: 'https://codeforces.com/problemset/problem/1354/D' },
+      { title: 'ACMP #1184: Дерево Фенвика', platform: 'ACMP', difficulty: 'Medium', url: 'https://acmp.ru/asp/do/index.asp?main=task&id_course=2&id_section=20&id_topic=46&id_problem=594' }
+    ],
+    quiz: {
+      snippet: `for (; i > 0; i -= i & -i) res += bit[i];`,
+      question: 'Что вычисляет побитовое выражение (i & -i) в дополнительном коде?',
+      options: [
+        'Младший единичный бит числа i (степень двойки)',
+        'Старший единичный бит числа i',
+        'Количество единиц в числе i',
+        'Инверсию всех битов числа i'
+      ],
+      answer: 'Младший единичный бит числа i (степень двойки)',
+      explanation: 'Отрицание -i равно (~i + 1), поэтому i & -i оставляет ровно один самый правый единичный бит.'
+    }
+  },
+  {
+    id: 'lcs-levenshtein',
+    title: 'LCS и Расстояние Левенштейна',
+    category: 'Динамическое программирование',
+    difficulty: 'Средний',
+    isStub: false,
+    engine: 'grid',
+    customInputType: 'two-strings',
+    timeComplexity: 'O(|s₁| · |s₂|)',
+    spaceComplexity: 'O(|s₁| · |s₂|)',
+    summary:
+      'Классические задачи ДП на двух строках. LCS находит длину наибольшей общей подпоследовательности (при s1[i-1] == s2[j-1] берём dp[i-1][j-1] + 1, иначе max(dp[i-1][j], dp[i][j-1])). Расстояние Левенштейна находит минимальное число вставок, удалений и замен символов для превращения s1 в s2.',
+    pitfalls: [
+      'База для Левенштейна: dp[i][0] = i и dp[0][j] = j (в отличие от LCS, где первая строка и первый столбец заполнены нулями).',
+      'Не путайте подпоследовательность (символы могут идти не подряд) и подстроку (символы идут подряд).',
+      'Если восстановление ответа не требуется, память можно сжать до O(min(|s1|, |s2|)), храня только 2 строки таблицы.'
+    ],
+    traceCode: [
+      '// LCS (если s1[i-1] == s2[j-1]):',
+      'dp[i][j] = dp[i - 1][j - 1] + 1;',
+      'else dp[i][j] = max(dp[i - 1][j], dp[i][j - 1]);',
+      '// Расстояние Левенштейна:',
+      'int cost = (s1[i - 1] == s2[j - 1]) ? 0 : 1;',
+      'dp[i][j] = min({dp[i-1][j] + 1, dp[i][j-1] + 1, dp[i-1][j-1] + cost});'
+    ],
+    presets: [
+      { id: 'lcs', label: 'LCS: ABCBDAB и BDCABA', data: { s1: 'ABCBD', s2: 'BDCAB', algoMode: 'lcs' } },
+      { id: 'lev', label: 'Левенштейн: KITTEN → SITTING', data: { s1: 'KITTEN', s2: 'SIT', algoMode: 'levenshtein' } }
+    ],
+    generateFrames({ s1, s2, algoMode = 'lcs' }) {
+      const n = s1.length;
+      const m = s2.length;
+      const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+      const rowHeaders = ['""', ...[...s1]];
+      const colHeaders = ['""', ...[...s2]];
+      const clone = () => dp.map((r) => [...r]);
+      const frames = [];
+
+      if (algoMode === 'levenshtein') {
+        for (let i = 0; i <= n; i++) dp[i][0] = i;
+        for (let j = 0; j <= m; j++) dp[0][j] = j;
+      }
+
+      frames.push({
+        grid: clone(),
+        rowHeaders,
+        colHeaders,
+        currentCell: null,
+        depCells: [],
+        pathCells: [],
+        arrows: [],
+        line: algoMode === 'lcs' ? 0 : 4,
+        vars: { режим: algoMode === 'lcs' ? 'LCS' : 'Левенштейн', s1, s2 },
+        explanation:
+          algoMode === 'lcs'
+            ? `Инициализируем матрицу LCS нулями.`
+            : `База Левенштейна: dp[i][0] = i, dp[0][j] = j (превращение в пустую строку).`
+      });
+
+      for (let i = 1; i <= n; i++) {
+        for (let j = 1; j <= m; j++) {
+          const same = s1[i - 1] === s2[j - 1];
+          let deps = [];
+          let arrows = [];
+
+          if (algoMode === 'lcs') {
+            if (same) {
+              dp[i][j] = dp[i - 1][j - 1] + 1;
+              deps = [[i - 1, j - 1]];
+              arrows = [{ from: [i - 1, j - 1], to: [i, j] }];
+            } else {
+              dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+              deps = [[i - 1, j], [i, j - 1]];
+              arrows = [{ from: dp[i - 1][j] >= dp[i][j - 1] ? [i - 1, j] : [i, j - 1], to: [i, j] }];
+            }
+          } else {
+            const cost = same ? 0 : 1;
+            const dDel = dp[i - 1][j] + 1;
+            const dIns = dp[i][j - 1] + 1;
+            const dSub = dp[i - 1][j - 1] + cost;
+            dp[i][j] = Math.min(dDel, dIns, dSub);
+            deps = [[i - 1, j], [i, j - 1], [i - 1, j - 1]];
+            const bestFrom = dp[i][j] === dSub ? [i - 1, j - 1] : dp[i][j] === dDel ? [i - 1, j] : [i, j - 1];
+            arrows = [{ from: bestFrom, to: [i, j] }];
+          }
+
+          frames.push({
+            grid: clone(),
+            rowHeaders,
+            colHeaders,
+            currentCell: [i, j],
+            depCells: deps,
+            pathCells: [],
+            arrows,
+            line: algoMode === 'lcs' ? (same ? 1 : 2) : 5,
+            vars: { i, j, 's1[i-1]': s1[i - 1], 's2[j-1]': s2[j - 1], [`dp[${i}][${j}]`]: dp[i][j] },
+            explanation:
+              algoMode === 'lcs'
+                ? same
+                  ? `Символы '${s1[i - 1]}' совпали! dp[${i}][${j}] = dp[${i - 1}][${j - 1}] + 1 = ${dp[i][j]}.`
+                  : `Разные символы ('${s1[i - 1]}' ≠ '${s2[j - 1]}'): берём max(${dp[i - 1][j]}, ${dp[i][j - 1]}) = ${dp[i][j]}.`
+                : `(${s1[i - 1]}, ${s2[j - 1]}): ${same ? 'совпадение (+0)' : 'операция (+1)'} → dp[${i}][${j}] = ${dp[i][j]}.`
+          });
+        }
+      }
+
+      // Восстановление пути
+      const pathCells = [[n, m]];
+      let r = n;
+      let c = m;
+      let lcsStr = '';
+      while (r > 0 && c > 0) {
+        if (algoMode === 'lcs') {
+          if (s1[r - 1] === s2[c - 1]) {
+            lcsStr = s1[r - 1] + lcsStr;
+            r--;
+            c--;
+          } else if (dp[r - 1][c] >= dp[r][c - 1]) r--;
+          else c--;
+        } else {
+          const cost = s1[r - 1] === s2[c - 1] ? 0 : 1;
+          if (dp[r][c] === dp[r - 1][c - 1] + cost) {
+            r--;
+            c--;
+          } else if (dp[r][c] === dp[r - 1][c] + 1) r--;
+          else c--;
+        }
+        pathCells.push([r, c]);
+      }
+
+      frames.push({
+        grid: clone(),
+        rowHeaders,
+        colHeaders,
+        currentCell: [n, m],
+        depCells: [],
+        pathCells,
+        arrows: [],
+        line: algoMode === 'lcs' ? 1 : 5,
+        vars: algoMode === 'lcs' ? { длинаLCS: dp[n][m], LCS: lcsStr || '""' } : { расстояниеЛевенштейна: dp[n][m] },
+        explanation:
+          algoMode === 'lcs'
+            ? `Готово! Длина LCS = ${dp[n][m]} (подпоследовательность: "${lcsStr}").`
+            : `Готово! Минимальное расстояние Левенштейна = ${dp[n][m]}.`
+      });
+
+      return frames;
+    },
+    code: {
+      cpp: `#include <vector>
+#include <string>
+#include <algorithm>
+using namespace std;
+
+int editDistance(const string& s1, const string& s2) {
+    int n = (int)s1.size(), m = (int)s2.size();
+    vector<vector<int>> dp(n + 1, vector<int>(m + 1, 0));
+    for (int i = 0; i <= n; ++i) dp[i][0] = i;
+    for (int j = 0; j <= m; ++j) dp[0][j] = j;
+    for (int i = 1; i <= n; ++i) {
+        for (int j = 1; j <= m; ++j) {
+            int cost = (s1[i - 1] == s2[j - 1]) ? 0 : 1;
+            dp[i][j] = min({dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost});
+        }
+    }
+    return dp[n][m];
+}`,
+      python: `def edit_distance(s1: str, s2: str) -> int:
+    n, m = len(s1), len(s2)
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n + 1): dp[i][0] = i
+    for j in range(m + 1): dp[0][j] = j
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            cost = 0 if s1[i - 1] == s2[j - 1] else 1
+            dp[i][j] = min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+    return dp[n][m]`
+    },
+    problems: [
+      { title: 'CSES: Edit Distance', platform: 'CSES', difficulty: 'Easy', url: 'https://cses.fi/problemset/task/1639' },
+      { title: 'AtCoder DP F: LCS', platform: 'AtCoder', difficulty: 'Easy', url: 'https://atcoder.jp/contests/dp/tasks/dp_f' },
+      { title: 'ACMP #1124: Расстояние по Левенштейну', platform: 'ACMP', difficulty: 'Medium', url: 'https://acmp.ru/index.asp?main=task&id_task=1124' }
+    ],
+    quiz: {
+      snippet: `// Поиск расстояния Левенштейна между строками длины N и M`,
+      question: 'До какого объёма можно оптимизировать память в задачах LCS и расстояния Левенштейна, если нужно вывести только число (без восстановления строки)?',
+      options: ['O(min(N, M))', 'O(N · M)', 'O(1)', 'O(N² + M²)'],
+      answer: 'O(min(N, M))',
+      explanation: 'Для вычисления текущей строки таблицы нужна только предыдущая строка, а более короткую строку можно выбрать в качестве столбцов.'
+    }
   },
   {
     id: 'dfs',
@@ -5008,6 +5612,48 @@ const FILL_BLANKS_BY_ID = {
         'for (int k = LOG - 1; k >= 0; --k)',
         '    if (up[u][k] != up[v][k]) { u = up[u][k]; v = up[v][k]; }',
         { blankId: 'ret', indent: '', placeholder: 'верните непосредственного родителя u', hint: 'return up[u][0];', answers: ['return up[u][0];'] }
+      ]
+    }
+  ],
+  'prefix-function': [
+    {
+      title: 'Откат и шаг префикс-функции (C++)',
+      lang: 'cpp',
+      lines: [
+        'for (int i = 1; i < n; ++i) {',
+        '    int j = pi[i - 1];',
+        { blankId: 'back', indent: '    ', placeholder: 'откат j при несовпадении s[i] != s[j]', hint: 'while (j > 0 && s[i] != s[j]) j = pi[j - 1];', answers: ['while (j > 0 && s[i] != s[j]) j = pi[j - 1];'] },
+        '    if (s[i] == s[j]) ++j;',
+        '    pi[i] = j;',
+        '}'
+      ]
+    }
+  ],
+  'fenwick-tree': [
+    {
+      title: 'Прыжки в дереве Фенвика (C++)',
+      lang: 'cpp',
+      lines: [
+        'void add(int i, long long delta) {',
+        { blankId: 'addloop', indent: '    ', placeholder: 'цикл вверх с шагом i += i & -i', hint: 'for (; i <= n; i += i & -i) bit[i] += delta;', answers: ['for (; i <= n; i += i & -i) bit[i] += delta;'] },
+        '}',
+        'long long sum(int i) {',
+        '    long long res = 0;',
+        { blankId: 'sumloop', indent: '    ', placeholder: 'цикл вниз с шагом i -= i & -i', hint: 'for (; i > 0; i -= i & -i) res += bit[i];', answers: ['for (; i > 0; i -= i & -i) res += bit[i];'] },
+        '    return res;',
+        '}'
+      ]
+    }
+  ],
+  'lcs-levenshtein': [
+    {
+      title: 'Переход в задаче LCS (Python)',
+      lang: 'python',
+      lines: [
+        'if s1[i - 1] == s2[j - 1]:',
+        { blankId: 'eq', indent: '    ', placeholder: 'символы совпали', hint: 'dp[i][j] = dp[i - 1][j - 1] + 1', answers: ['dp[i][j] = dp[i - 1][j - 1] + 1'] },
+        'else:',
+        { blankId: 'neq', indent: '    ', placeholder: 'максимум из соседа сверху и слева', hint: 'dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])', answers: ['dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])'] }
       ]
     }
   ]

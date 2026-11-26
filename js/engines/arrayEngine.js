@@ -7,7 +7,11 @@ export function renderArrayFrame(container, frame, options = {}) {
     pointers = {},
     activeRange = null,
     midIndex = null,
-    foundIndex = null
+    foundIndex = null,
+    primaryLabel = null,
+    secondaryArray = null,
+    secondaryLabel = null,
+    secondaryHighlight = []
   } = frame;
 
   const { clickable = false, onCellClick = null } = options;
@@ -81,5 +85,39 @@ export function renderArrayFrame(container, frame, options = {}) {
   });
 
   container.innerHTML = '';
+  if (primaryLabel) {
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'font-size:12px; color:var(--text-secondary); font-family:var(--font-mono); margin-bottom:2px;';
+    lbl.textContent = primaryLabel;
+    container.appendChild(lbl);
+  }
   container.appendChild(wrap);
+
+  if (Array.isArray(secondaryArray) && secondaryArray.length > 0) {
+    if (secondaryLabel) {
+      const lbl2 = document.createElement('div');
+      lbl2.style.cssText = 'font-size:12px; color:var(--accent-light); font-family:var(--font-mono); margin-top:6px;';
+      lbl2.textContent = secondaryLabel;
+      container.appendChild(lbl2);
+    }
+    const secHighlightSet = new Set(secondaryHighlight);
+    const secWrap = document.createElement('div');
+    secWrap.className = 'array-container';
+    secWrap.style.padding = '8px 8px 10px';
+    secondaryArray.forEach((val, idx) => {
+      const cw = document.createElement('div');
+      cw.className = 'array-cell-wrap';
+      const cell = document.createElement('div');
+      cell.className = 'array-cell';
+      if (secHighlightSet.has(idx)) cell.classList.add('mid');
+      cell.textContent = val;
+      const idxEl = document.createElement('div');
+      idxEl.className = 'array-index';
+      idxEl.textContent = idx + 1; // 1-based for BIT
+      cw.appendChild(cell);
+      cw.appendChild(idxEl);
+      secWrap.appendChild(cw);
+    });
+    container.appendChild(secWrap);
+  }
 }
