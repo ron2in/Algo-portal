@@ -251,14 +251,191 @@ const DEBUG_CASES = [
   }
 ];
 
+const PROCEDURAL_TEMPLATES = [
+  {
+    title: 'Бинарный поиск (lower_bound)',
+    lang: 'C++',
+    cleanLines: [
+      'int l = 0, r = n - 1, ans = n;',
+      'while (l <= r) {',
+      '    int m = l + (r - l) / 2;',
+      '    if (a[m] >= target) { ans = m; r = m - 1; }',
+      '    else l = m + 1;',
+      '}'
+    ],
+    mutations: [
+      {
+        bugLine: 1,
+        mutatedLine: 'while (l < r) {',
+        options: ['while (l <= r) {', 'while (l != r) {', 'while (r - l > 1) {'],
+        correctOpt: 0,
+        failingTest: 'n = 1, a = [5], target = 5: цикл не выполнится, ответ останется ans = 1 вместо 0.',
+        explanation: 'При границах [l, r] и ans = n условие l < r пропускает последний элемент при l == r.'
+      },
+      {
+        bugLine: 3,
+        mutatedLine: '    if (a[m] > target) { ans = m; r = m - 1; }',
+        options: ['if (a[m] >= target) { ans = m; r = m - 1; }', 'if (a[m] == target)', 'r = m;'],
+        correctOpt: 0,
+        failingTest: 'a = [2, 5, 8], target = 5: строгое неравенство > пропустит a[1] = 5 и вернёт индекс 2 (upper_bound вместо lower_bound).',
+        explanation: 'lower_bound ищет первый элемент >= target, а не строго > target.'
+      }
+    ]
+  },
+  {
+    title: 'Алгоритм Дейкстры (priority_queue)',
+    lang: 'C++',
+    cleanLines: [
+      'vector<long long> dist(n, 1e18); dist[s] = 0;',
+      'pq.push({0, s});',
+      'while (!pq.empty()) {',
+      '    auto [d, u] = pq.top(); pq.pop();',
+      '    if (d > dist[u]) continue;',
+      '    for (auto [v, w] : adj[u])',
+      '        if (dist[u] + w < dist[v]) { dist[v] = dist[u] + w; pq.push({dist[v], v}); }',
+      '}'
+    ],
+    mutations: [
+      {
+        bugLine: 0,
+        mutatedLine: 'vector<int> dist(n, 1e9); dist[s] = 0;',
+        options: ['vector<long long> dist(n, 1e18); dist[s] = 0;', 'vector<int> dist(n, 1e6);', 'dist[s] = 1;'],
+        correctOpt: 0,
+        failingTest: 'Путь из 5 рёбер весом 10⁹: сумма 5·10⁹ переполнит 32-битный int.',
+        explanation: 'При весах рёбер до 10⁹ суммарное расстояние может достигать 10¹⁴ — нужен long long и INF = 1e18.'
+      },
+      {
+        bugLine: 4,
+        mutatedLine: '    // нет проверки d > dist[u]',
+        options: ['if (d > dist[u]) continue;', 'if (d < dist[u]) continue;', 'if (u == s) continue;'],
+        correctOpt: 0,
+        failingTest: 'Граф с многократным улучшением dist[u]: устаревшие пары в куче вызывают TLE.',
+        explanation: 'Проверка d > dist[u] отсекает устаревшие записи из priority_queue.'
+      }
+    ]
+  },
+  {
+    title: '2D ДП: 0-1 Рюкзак',
+    lang: 'C++',
+    cleanLines: [
+      'for (int i = 1; i <= n; ++i) {',
+      '    for (int w = 0; w <= W; ++w) {',
+      '        dp[i][w] = dp[i - 1][w];',
+      '        if (w >= wt[i - 1])',
+      '            dp[i][w] = max(dp[i][w], dp[i - 1][w - wt[i - 1]] + val[i - 1]);',
+      '    }',
+      '}'
+    ],
+    mutations: [
+      {
+        bugLine: 4,
+        mutatedLine: '            dp[i][w] = max(dp[i][w], dp[w - wt[i - 1]][i - 1] + val[i - 1]);',
+        options: ['dp[i - 1][w - wt[i - 1]] + val[i - 1]', 'dp[i][w - wt[i]]', 'dp[i + 1][w]'],
+        correctOpt: 0,
+        failingTest: 'Перепутаны индексы i и w в таблице dp: выход за границы массива (RE / WA).',
+        explanation: 'Первый индекс — номер предмета (i - 1), второй — оставшаяся вместимость (w - wt[i - 1]).'
+      },
+      {
+        bugLine: 3,
+        mutatedLine: '        if (w > wt[i - 1])',
+        options: ['if (w >= wt[i - 1])', 'if (w <= wt[i - 1])', 'if (w == wt[i])'],
+        correctOpt: 0,
+        failingTest: 'Предмет весом ровно W: при строгом > предмет не будет взят (WA).',
+        explanation: 'Предмет весом wt[i - 1] помещается в рюкзак вместимостью w, если w >= wt[i - 1].'
+      }
+    ]
+  },
+  {
+    title: 'Дерево Фенвика (sum / add)',
+    lang: 'C++',
+    cleanLines: [
+      'void add(int i, long long delta) {',
+      '    for (; i <= n; i += i & -i) bit[i] += delta;',
+      '}',
+      'long long sum(int i) {',
+      '    long long res = 0;',
+      '    for (; i > 0; i -= i & -i) res += bit[i];',
+      '    return res;',
+      '}'
+    ],
+    mutations: [
+      {
+        bugLine: 5,
+        mutatedLine: '    for (; i >= 0; i -= i & -i) res += bit[i];',
+        options: ['for (; i > 0; i -= i & -i) res += bit[i];', 'for (; i > 1; i -= i & -i)', 'i += i & -i'],
+        correctOpt: 0,
+        failingTest: 'При достижении i = 0 выражение 0 - (0 & -0) остаётся 0: бесконечный цикл (TLE).',
+        explanation: 'В 1-индексации дерева Фенвика цикл sum(i) обязан останавливаться при i > 0.'
+      },
+      {
+        bugLine: 1,
+        mutatedLine: '    for (; i < n; i += i & -i) bit[i] += delta;',
+        options: ['for (; i <= n; i += i & -i) bit[i] += delta;', 'for (; i <= n; i -= i & -i)', 'bit[i] = delta;'],
+        correctOpt: 0,
+        failingTest: 'Запрос add(n, 5): последний элемент n в 1-индексации не обновится (off-by-one WA).',
+        explanation: 'В 1-индексации последний элемент имеет индекс n, поэтому нужно i <= n.'
+      }
+    ]
+  }
+];
+
+function generateProceduralCase() {
+  const tpl = PROCEDURAL_TEMPLATES[Math.floor(Math.random() * PROCEDURAL_TEMPLATES.length)];
+  const isClean = Math.random() < 0.18; // ~18% чистый код без бага
+  if (isClean) {
+    return {
+      title: `${tpl.title} [Процедурный]`,
+      lang: tpl.lang,
+      lines: [...tpl.cleanLines],
+      bugLine: -1,
+      isClean: true,
+      explanation: 'Этот фрагмент полностью корректен — в нём нет ни логических ошибок, ни переполнений.'
+    };
+  }
+  const mut = tpl.mutations[Math.floor(Math.random() * tpl.mutations.length)];
+  const lines = [...tpl.cleanLines];
+  lines[mut.bugLine] = mut.mutatedLine;
+  return {
+    title: `${tpl.title} [Процедурный]`,
+    lang: tpl.lang,
+    lines,
+    bugLine: mut.bugLine,
+    options: mut.options,
+    correctOpt: mut.correctOpt,
+    failingTest: mut.failingTest,
+    explanation: mut.explanation,
+    isClean: false
+  };
+}
+
 export function renderDebugHuntView(container, escapeHtml) {
-  let idx = 0;
+  let mode = 'all'; // 'all' | 'procedural' | 'manual'
+  let manualIdx = 0;
   let score = 0;
   let selectedLine = null;
   let solved = false;
+  let currentCase = DEBUG_CASES[0];
+
+  function pickNextCase() {
+    selectedLine = null;
+    solved = false;
+    if (mode === 'procedural') {
+      currentCase = generateProceduralCase();
+    } else if (mode === 'manual') {
+      currentCase = DEBUG_CASES[manualIdx];
+      manualIdx = (manualIdx + 1) % DEBUG_CASES.length;
+    } else {
+      if (Math.random() < 0.5) {
+        currentCase = generateProceduralCase();
+      } else {
+        currentCase = DEBUG_CASES[manualIdx];
+        manualIdx = (manualIdx + 1) % DEBUG_CASES.length;
+      }
+    }
+  }
 
   function render() {
-    const dc = DEBUG_CASES[idx];
+    const dc = currentCase;
     container.innerHTML = `
       <div style="margin-bottom: 12px;">
         <a href="#roadmap" class="btn btn-ghost btn-sm">← К роадмапу тем</a>
@@ -266,14 +443,20 @@ export function renderDebugHuntView(container, escapeHtml) {
       <section class="card">
         <div class="card-header">
           <div>
-            <span class="badge badge-muted">Кейс ${idx + 1} / ${DEBUG_CASES.length} • ${dc.lang}</span>
+            <span class="badge badge-muted">${dc.lang} • ${dc.isClean ? 'Контрольная проверка' : 'Поиск бага'}</span>
             <h1 class="topic-title" style="margin-top:6px;">🐞 Охота на баги: ${escapeHtml(dc.title)}</h1>
           </div>
-          <span class="badge badge-success">Найдено багов: ${score}</span>
+          <span class="badge badge-success">Решено: ${score}</span>
+        </div>
+
+        <div class="roadmap-filters" style="margin-bottom:12px;">
+          <button type="button" class="filter-chip ${mode === 'all' ? 'active' : ''}" data-dh-mode="all">Все баги</button>
+          <button type="button" class="filter-chip ${mode === 'procedural' ? 'active' : ''}" data-dh-mode="procedural">Только процедурные (бесконечный режим)</button>
+          <button type="button" class="filter-chip ${mode === 'manual' ? 'active' : ''}" data-dh-mode="manual">Классические ловушки</button>
         </div>
 
         <p style="color:var(--text-secondary); margin:0 0 10px;">
-          Шаг 1: кликните по строке кода, в которой скрыта ошибка. Шаг 2: выберите правильное исправление.
+          Кликните по строке кода с ошибкой (или нажмите «Код корректен!», если бага нет).
         </p>
 
         <div class="code-block-wrap">
@@ -290,10 +473,14 @@ export function renderDebugHuntView(container, escapeHtml) {
           </div>
         </div>
 
+        <div style="margin-top:12px;">
+          <button type="button" id="debug-clean-btn" class="btn btn-secondary btn-sm">✓ Код корректен (бага нет)!</button>
+        </div>
+
         <div id="debug-step2" style="margin-top:14px;" hidden>
-          <div style="font-weight:600; font-size:14px; margin-bottom:8px;">Выберите исправление для строки ${selectedLine !== null ? selectedLine + 1 : ''}:</div>
+          <div style="font-weight:600; font-size:14px; margin-bottom:8px;">Выберите исправление:</div>
           <div class="blitz-options">
-            ${dc.options
+            ${(dc.options || [])
               .map((opt, oIdx) => `<button type="button" class="blitz-opt-btn" data-fix="${oIdx}">${escapeHtml(opt)}</button>`)
               .join('')}
           </div>
@@ -302,7 +489,7 @@ export function renderDebugHuntView(container, escapeHtml) {
         <div id="debug-feedback" class="step-explanation" style="margin-top:14px;" hidden></div>
 
         <div style="margin-top:14px; display:flex; justify-content:flex-end;">
-          <button type="button" id="debug-next-btn" class="btn btn-primary btn-sm" hidden>Следующий баг →</button>
+          <button type="button" id="debug-next-btn" class="btn btn-primary btn-sm" hidden>Следующая задача →</button>
         </div>
       </section>
     `;
@@ -310,6 +497,30 @@ export function renderDebugHuntView(container, escapeHtml) {
     const step2 = document.getElementById('debug-step2');
     const fb = document.getElementById('debug-feedback');
     const nextBtn = document.getElementById('debug-next-btn');
+
+    container.querySelectorAll('[data-dh-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        mode = btn.getAttribute('data-dh-mode');
+        pickNextCase();
+        render();
+      });
+    });
+
+    document.getElementById('debug-clean-btn').addEventListener('click', () => {
+      if (solved) return;
+      solved = true;
+      step2.hidden = true;
+      if (dc.isClean) {
+        score++;
+        fb.style.borderLeftColor = 'var(--success)';
+        fb.innerHTML = `<strong>✓ Верно!</strong> ${escapeHtml(dc.explanation)}`;
+      } else {
+        fb.style.borderLeftColor = 'var(--danger)';
+        fb.innerHTML = `<strong>✕ На самом деле здесь есть баг в строке ${dc.bugLine + 1}.</strong> ${escapeHtml(dc.explanation)}`;
+      }
+      fb.hidden = false;
+      nextBtn.hidden = false;
+    });
 
     container.querySelectorAll('[data-dline]').forEach((el) => {
       el.addEventListener('click', () => {
@@ -319,14 +530,16 @@ export function renderDebugHuntView(container, escapeHtml) {
         container.querySelectorAll('[data-dline]').forEach((x) => x.classList.remove('active'));
         el.classList.add('active');
 
-        if (clicked === dc.bugLine) {
+        if (!dc.isClean && clicked === dc.bugLine) {
           fb.hidden = true;
           step2.hidden = false;
           step2.querySelector('div').textContent = `✓ Верная строка (${clicked + 1})! Выберите исправление:`;
         } else {
           step2.hidden = true;
           fb.style.borderLeftColor = 'var(--warning)';
-          fb.textContent = `В строке ${clicked + 1} ошибки нет. Посмотрите внимательнее на условия циклов, границы и переполнения.`;
+          fb.textContent = dc.isClean
+            ? `В строке ${clicked + 1} ошибки нет (проверьте, может быть весь код корректен?).`
+            : `В строке ${clicked + 1} ошибки нет. Посмотрите внимательнее на условия циклов, границы и переполнения.`;
           fb.hidden = false;
         }
       });
@@ -352,9 +565,7 @@ export function renderDebugHuntView(container, escapeHtml) {
     });
 
     nextBtn.addEventListener('click', () => {
-      idx = (idx + 1) % DEBUG_CASES.length;
-      selectedLine = null;
-      solved = false;
+      pickNextCase();
       render();
     });
   }

@@ -14,6 +14,7 @@ import {
 } from './tools.js';
 import { renderDebugHuntView, renderAlgoSelectorView } from './advancedTools.js';
 import { runPythonTests, getTestsForTopic } from './pyodideRunner.js';
+import { fetchCfProblems, getCfTagForTopic } from './cfApi.js';
 
 const STORAGE_KEY = 'algoportal_state_v1';
 
@@ -1497,23 +1498,37 @@ function renderInteractiveWorkspace(container, topic) {
       });
     } else {
       const q = topic.quiz;
+      const cfTag = getCfTagForTopic(topic.id);
+      const staticProblemsHtml = topic.problems
+        .map(
+          (pr) => `
+          <a href="${pr.url}" target="_blank" rel="noopener noreferrer" class="problem-link-card">
+            <div>
+              <div style="font-weight:500; font-size:14px;">${escapeHtml(pr.title)}</div>
+              <div style="font-size:12px; color:var(--text-secondary);">${escapeHtml(pr.platform)}</div>
+            </div>
+            <span class="badge ${pr.difficulty === 'Easy' ? 'badge-success' : 'badge-accent'}">${escapeHtml(pr.difficulty)}</span>
+          </a>
+        `
+        )
+        .join('');
+
       tabContentArea.innerHTML = `
-        <h3 style="margin:0 0 10px; font-size:15px;">Задачи на закрепление</h3>
-        <div class="problems-list">
-          ${topic.problems
-            .map(
-              (pr) => `
-              <a href="${pr.url}" target="_blank" rel="noopener noreferrer" class="problem-link-card">
-                <div>
-                  <div style="font-weight:500; font-size:14px;">${escapeHtml(pr.title)}</div>
-                  <div style="font-size:12px; color:var(--text-secondary);">${escapeHtml(pr.platform)}</div>
-                </div>
-                <span class="badge ${pr.difficulty === 'Easy' ? 'badge-success' : 'badge-accent'}">${escapeHtml(pr.difficulty)}</span>
-              </a>
-            `
-            )
-            .join('')}
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+          <h3 style="margin:0; font-size:15px;">Задачи на закрепление (Codeforces API: <span class="mono" style="color:var(--accent-light);">${escapeHtml(cfTag)}</span>)</h3>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select id="cf-rating-filter" class="select-field" style="width:auto; padding:4px 8px; font-size:12.5px;">
+              <option value="all">Любой рейтинг</option>
+              <option value="800-1100">800–1100</option>
+              <option value="1200-1500">1200–1500</option>
+              <option value="1600-1900">1600–1900</option>
+              <option value="2000+">2000+</option>
+            </select>
+            <button type="button" id="cf-refresh-btn" class="btn btn-secondary btn-xs">🔄 Обновить подборку задач</button>
+          </div>
         </div>
+        <div id="cf-status-msg" style="font-size:12.5px; color:var(--text-secondary); margin-bottom:8px;">⏳ Загрузка задач с Codeforces...</div>
+        <div id="cf-problems-list" class="problems-list">${staticProblemsHtml}</div>
 
         <h3 style="margin:0 0 10px; font-size:15px;">Мини-тест: определите асимптотику</h3>
         <div class="quiz-box">
@@ -1529,6 +1544,47 @@ function renderInteractiveWorkspace(container, topic) {
           <div id="quiz-feedback" style="margin-top:10px; font-size:13px;" hidden></div>
         </div>
       `;
+
+      const cfStatus = document.getElementById('cf-status-msg');
+      const cfList = document.getElementById('cf-problems-list');
+      const cfRating = document.getElementById('cf-rating-filter');
+      const cfRefresh = document.getElementById('cf-refresh-btn');
+
+      async function loadCfProblems() {
+        cfStatus.textContent = '⏳ Загрузка задач с Codeforces...';
+        cfRefresh.disabled = true;
+        try {
+          const { items } = await fetchCfProblems(topic.id, cfRating.value, 5);
+          if (items.length === 0) {
+            cfStatus.textContent = 'По выбранному рейтингу задач не найдено — показаны базовые задачи темы.';
+            cfList.innerHTML = staticProblemsHtml;
+          } else {
+            cfStatus.textContent = `Показано ${items.length} случайных задач с Codeforces (кэш 30 мин):`;
+            cfList.innerHTML = items
+              .map(
+                (pr) => `
+                <a href="${pr.url}" target="_blank" rel="noopener noreferrer" class="problem-link-card">
+                  <div>
+                    <div style="font-weight:500; font-size:14px;"><span class="mono" style="color:var(--accent-light);">${escapeHtml(pr.code)}</span> ${escapeHtml(pr.name)}</div>
+                    <div style="font-size:12px; color:var(--text-secondary);">Решили: ${pr.solvedCount}</div>
+                  </div>
+                  <span class="badge badge-accent">${pr.rating}</span>
+                </a>
+              `
+              )
+              .join('');
+          }
+        } catch {
+          cfStatus.textContent = 'API Codeforces временно недоступен — показаны сохранённые задачи темы.';
+          cfList.innerHTML = staticProblemsHtml;
+        } finally {
+          cfRefresh.disabled = false;
+        }
+      }
+
+      cfRating.addEventListener('change', loadCfProblems);
+      cfRefresh.addEventListener('click', loadCfProblems);
+      loadCfProblems();
 
       tabContentArea.querySelectorAll('.quiz-option-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
